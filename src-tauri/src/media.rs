@@ -21,6 +21,10 @@ static MANAGER_CACHE: Mutex<Option<windows::Media::Control::GlobalSystemMediaTra
 // Cached thumbnail for the currently playing track
 static CACHED_THUMBNAIL: Mutex<Option<(String, Option<String>)>> = Mutex::new(None);
 
+// Cached last active app and media info to maintain state when paused
+static LAST_ACTIVE_APP: Mutex<Option<String>> = Mutex::new(None);
+static LAST_VALID_MEDIA: Mutex<Option<(MediaInfo, std::time::Instant)>> = Mutex::new(None);
+
 #[cfg(windows)]
 use windows::Media::Control::{
     GlobalSystemMediaTransportControlsSession,
@@ -49,22 +53,51 @@ fn get_session_manager() -> Option<GlobalSystemMediaTransportControlsSessionMana
 fn get_active_session(
     manager: &GlobalSystemMediaTransportControlsSessionManager,
 ) -> Option<GlobalSystemMediaTransportControlsSession> {
-    // 1. Scan sessions and prioritize an actively playing session
+    let last_app = LAST_ACTIVE_APP.lock().unwrap().clone();
+
+    // 1. Scan sessions and prioritize an actively playing session with valid metadata
     if let Ok(sessions) = manager.GetSessions() {
         let size = sessions.Size().unwrap_or(0);
         let mut playing_session: Option<GlobalSystemMediaTransportControlsSession> = None;
-        let mut paused_session: Option<GlobalSystemMediaTransportControlsSession> = None;
+        let mut last_app_paused: Option<GlobalSystemMediaTransportControlsSession> = None;
+        let mut other_paused: Option<GlobalSystemMediaTransportControlsSession> = None;
 
         for i in 0..size {
             if let Ok(session) = sessions.GetAt(i) {
+                // Verify that this session has valid media properties (avoid empty dummy sessions)
+                let has_valid_media = if let Ok(op) = session.TryGetMediaPropertiesAsync() {
+                    if let Ok(props) = op.get() {
+                        let title = props.Title().map(|s| s.to_string()).unwrap_or_default();
+                        let artist = props.Artist().map(|s| s.to_string()).unwrap_or_default();
+                        !title.trim().is_empty() || !artist.trim().is_empty()
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                };
+
+                if !has_valid_media {
+                    continue;
+                }
+
+                let source_app = session.SourceAppUserModelId().map(|s| s.to_string()).unwrap_or_default();
+
                 if let Ok(playback) = session.GetPlaybackInfo() {
                     if let Ok(status) = playback.PlaybackStatus() {
                         if status == GlobalSystemMediaTransportControlsSessionPlaybackStatus::Playing {
                             playing_session = Some(session);
                             break;
-                        } else if status == GlobalSystemMediaTransportControlsSessionPlaybackStatus::Paused {
-                            if paused_session.is_none() {
-                                paused_session = Some(session);
+                        } else if status == GlobalSystemMediaTransportControlsSessionPlaybackStatus::Paused
+                            || status == GlobalSystemMediaTransportControlsSessionPlaybackStatus::Stopped
+                        {
+                            if let Some(ref la) = last_app {
+                                if &source_app == la && last_app_paused.is_none() {
+                                    last_app_paused = Some(session.clone());
+                                }
+                            }
+                            if other_paused.is_none() {
+                                other_paused = Some(session);
                             }
                         }
                     }
@@ -73,15 +106,28 @@ fn get_active_session(
         }
 
         if let Some(s) = playing_session {
+            if let Ok(app_id) = s.SourceAppUserModelId() {
+                *LAST_ACTIVE_APP.lock().unwrap() = Some(app_id.to_string());
+            }
             return Some(s);
         }
-        if let Some(s) = paused_session {
+        if let Some(s) = last_app_paused {
+            return Some(s);
+        }
+        if let Some(s) = other_paused {
             return Some(s);
         }
     }
 
     // 2. Fallback to default current session
-    manager.GetCurrentSession().ok()
+    if let Ok(current) = manager.GetCurrentSession() {
+        if let Ok(app_id) = current.SourceAppUserModelId() {
+            *LAST_ACTIVE_APP.lock().unwrap() = Some(app_id.to_string());
+        }
+        return Some(current);
+    }
+
+    None
 }
 
 #[cfg(windows)]
@@ -122,63 +168,81 @@ fn load_thumbnail_safe(props: &GlobalSystemMediaTransportControlsSessionMediaPro
 
 #[cfg(windows)]
 pub fn fetch_current_media() -> Option<MediaInfo> {
-    let manager = get_session_manager()?;
-    let session = get_active_session(&manager)?;
+    let fresh_media = (|| -> Option<MediaInfo> {
+        let manager = get_session_manager()?;
+        let session = get_active_session(&manager)?;
 
-    let props = session.TryGetMediaPropertiesAsync().ok()?.get().ok()?;
-    let playback = session.GetPlaybackInfo().ok()?;
-    let timeline = session.GetTimelineProperties().ok();
+        let props = session.TryGetMediaPropertiesAsync().ok()?.get().ok()?;
+        let playback = session.GetPlaybackInfo().ok()?;
+        let timeline = session.GetTimelineProperties().ok();
 
-    let title = props.Title().map(|s| s.to_string()).unwrap_or_default();
-    let artist = props.Artist().map(|s| s.to_string()).unwrap_or_default();
-    let album = props.AlbumTitle().map(|s| s.to_string()).unwrap_or_default();
-    let source_app = session.SourceAppUserModelId().map(|s| s.to_string()).unwrap_or_default();
+        let title = props.Title().map(|s| s.to_string()).unwrap_or_default();
+        let artist = props.Artist().map(|s| s.to_string()).unwrap_or_default();
+        let album = props.AlbumTitle().map(|s| s.to_string()).unwrap_or_default();
+        let source_app = session.SourceAppUserModelId().map(|s| s.to_string()).unwrap_or_default();
 
-    if title.trim().is_empty() && artist.trim().is_empty() {
-        return None;
-    }
+        if title.trim().is_empty() && artist.trim().is_empty() {
+            return None;
+        }
 
-    let is_playing = playback
-        .PlaybackStatus()
-        .map(|st| st == GlobalSystemMediaTransportControlsSessionPlaybackStatus::Playing)
-        .unwrap_or(false);
+        let is_playing = playback
+            .PlaybackStatus()
+            .map(|st| st == GlobalSystemMediaTransportControlsSessionPlaybackStatus::Playing)
+            .unwrap_or(false);
 
-    let (position_sec, duration_sec) = if let Some(tl) = timeline {
-        let pos = tl.Position().map(|d| (d.Duration / 10_000_000) as u64).unwrap_or(0);
-        let dur = tl.EndTime().map(|d| (d.Duration / 10_000_000) as u64).unwrap_or(0);
-        (pos, dur)
-    } else {
-        (0, 0)
-    };
+        let (position_sec, duration_sec) = if let Some(tl) = timeline {
+            let pos = tl.Position().map(|d| (d.Duration / 10_000_000) as u64).unwrap_or(0);
+            let dur = tl.EndTime().map(|d| (d.Duration / 10_000_000) as u64).unwrap_or(0);
+            (pos, dur)
+        } else {
+            (0, 0)
+        };
 
-    // Check cached thumbnail
-    let track_key = format!("{}::{}", title, artist);
-    let mut cache = CACHED_THUMBNAIL.lock().unwrap();
+        // Check cached thumbnail
+        let track_key = format!("{}::{}", title, artist);
+        let mut cache = CACHED_THUMBNAIL.lock().unwrap();
 
-    let thumbnail = if let Some((ref cached_key, ref cached_thumb)) = *cache {
-        if cached_key == &track_key {
-            cached_thumb.clone()
+        let thumbnail = if let Some((ref cached_key, ref cached_thumb)) = *cache {
+            if cached_key == &track_key {
+                cached_thumb.clone()
+            } else {
+                let new_thumb = load_thumbnail_safe(&props);
+                *cache = Some((track_key, new_thumb.clone()));
+                new_thumb
+            }
         } else {
             let new_thumb = load_thumbnail_safe(&props);
             *cache = Some((track_key, new_thumb.clone()));
             new_thumb
-        }
-    } else {
-        let new_thumb = load_thumbnail_safe(&props);
-        *cache = Some((track_key, new_thumb.clone()));
-        new_thumb
-    };
+        };
 
-    Some(MediaInfo {
-        title,
-        artist,
-        album,
-        thumbnail,
-        is_playing,
-        position_sec,
-        duration_sec,
-        source_app,
-    })
+        Some(MediaInfo {
+            title,
+            artist,
+            album,
+            thumbnail,
+            is_playing,
+            position_sec,
+            duration_sec,
+            source_app,
+        })
+    })();
+
+    if let Some(m) = fresh_media {
+        *LAST_VALID_MEDIA.lock().unwrap() = Some((m.clone(), std::time::Instant::now()));
+        Some(m)
+    } else {
+        // Fallback: Grace period (up to 30 seconds) for paused track during transient gaps
+        let last_lock = LAST_VALID_MEDIA.lock().unwrap();
+        if let Some((ref cached, instant)) = *last_lock {
+            if instant.elapsed() < Duration::from_secs(30) {
+                let mut paused = cached.clone();
+                paused.is_playing = false;
+                return Some(paused);
+            }
+        }
+        None
+    }
 }
 
 #[cfg(not(windows))]
@@ -190,6 +254,28 @@ pub fn fetch_current_media() -> Option<MediaInfo> {
 pub fn toggle_play_pause() -> Result<(), String> {
     let manager = get_session_manager().ok_or_else(|| "No SMTC manager".to_string())?;
     let session = get_active_session(&manager).ok_or_else(|| "No active session".to_string())?;
+
+    // Try Play first if session is currently paused/stopped
+    let is_paused_or_stopped = session
+        .GetPlaybackInfo()
+        .ok()
+        .and_then(|p| p.PlaybackStatus().ok())
+        .map(|st| {
+            st == GlobalSystemMediaTransportControlsSessionPlaybackStatus::Paused
+                || st == GlobalSystemMediaTransportControlsSessionPlaybackStatus::Stopped
+        })
+        .unwrap_or(false);
+
+    if is_paused_or_stopped {
+        if let Ok(op) = session.TryPlayAsync() {
+            if let Ok(success) = op.get() {
+                if success {
+                    return Ok(());
+                }
+            }
+        }
+    }
+
     let _ = session
         .TryTogglePlayPauseAsync()
         .map_err(|e| e.to_string())?
