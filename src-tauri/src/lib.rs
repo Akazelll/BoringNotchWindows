@@ -2,11 +2,14 @@ mod media;
 mod power;
 mod notifications;
 mod sysinfo;
+mod autostart;
 
 use media::MediaInfo;
 use notifications::{AppNotification, CallEventInfo};
 use power::BatteryInfo;
 use sysinfo::SystemStats;
+use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{Emitter, Manager};
 use std::time::Duration;
 
@@ -65,6 +68,20 @@ fn get_windows_username() -> String {
 }
 
 #[tauri::command]
+fn is_autostart_enabled() -> bool {
+    autostart::is_autostart_enabled()
+}
+
+#[tauri::command]
+fn set_autostart_enabled(enabled: bool) -> Result<(), String> {
+    if enabled {
+        autostart::enable_autostart()
+    } else {
+        autostart::disable_autostart()
+    }
+}
+
+#[tauri::command]
 fn set_notch_size(window: tauri::WebviewWindow, width: f64, height: f64) {
     if let Ok(Some(monitor)) = window.primary_monitor() {
         let scale = monitor.scale_factor();
@@ -97,6 +114,105 @@ pub fn run() {
                     let _ = window.set_position(tauri::LogicalPosition::new(pos_x, 0.0));
                 }
             }
+
+            // Setup System Tray icon ("Show hidden icons" on Windows Taskbar)
+            let show_notch = MenuItem::with_id(app, "show_notch", "Tampilkan Notch", true, None::<&str>)?;
+            let hide_notch = MenuItem::with_id(app, "hide_notch", "Sembunyikan Notch", true, None::<&str>)?;
+
+            // Submenu Transparansi Notch
+            let op_100 = MenuItem::with_id(app, "op_100", "● 100% (Solid Black)", true, None::<&str>)?;
+            let op_90 = MenuItem::with_id(app, "op_90", "90% (Transparan Halus)", true, None::<&str>)?;
+            let op_75 = MenuItem::with_id(app, "op_75", "75% (Transparan Sedang)", true, None::<&str>)?;
+            let op_60 = MenuItem::with_id(app, "op_60", "60% (Transparan Kaca)", true, None::<&str>)?;
+            let op_45 = MenuItem::with_id(app, "op_45", "45% (Sangat Bening)", true, None::<&str>)?;
+
+            let transparency_menu = Submenu::with_items(
+                app,
+                "🎨 Transparansi Notch",
+                true,
+                &[&op_100, &op_90, &op_75, &op_60, &op_45],
+            )?;
+
+            // Startup Toggle Checkbox in Tray
+            let is_start = autostart::is_autostart_enabled();
+            let autostart_item = CheckMenuItem::with_id(app, "toggle_autostart", "🚀 Jalankan saat Startup", true, is_start, None::<&str>)?;
+
+            let quit_app = MenuItem::with_id(app, "quit", "❌ Keluar dari Boring Notch", true, None::<&str>)?;
+
+            let tray_menu = Menu::with_items(app, &[
+                &show_notch,
+                &hide_notch,
+                &PredefinedMenuItem::separator(app)?,
+                &transparency_menu,
+                &autostart_item,
+                &PredefinedMenuItem::separator(app)?,
+                &quit_app,
+            ])?;
+
+            let mut tray_builder = TrayIconBuilder::new()
+                .menu(&tray_menu)
+                .show_menu_on_left_click(false)
+                .tooltip("Boring Notch Windows")
+                .on_menu_event(|app, event| {
+                    match event.id.as_ref() {
+                        "show_notch" => {
+                            if let Some(window) = app.get_webview_window("main") {
+                                let _ = window.show();
+                                let _ = window.set_focus();
+                            }
+                        }
+                        "hide_notch" => {
+                            if let Some(window) = app.get_webview_window("main") {
+                                let _ = window.hide();
+                            }
+                        }
+                        "op_100" => {
+                            let _ = app.emit("set-opacity", 1.0f64);
+                        }
+                        "op_90" => {
+                            let _ = app.emit("set-opacity", 0.90f64);
+                        }
+                        "op_75" => {
+                            let _ = app.emit("set-opacity", 0.75f64);
+                        }
+                        "op_60" => {
+                            let _ = app.emit("set-opacity", 0.60f64);
+                        }
+                        "op_45" => {
+                            let _ = app.emit("set-opacity", 0.45f64);
+                        }
+                        "toggle_autostart" => {
+                            let current = autostart::is_autostart_enabled();
+                            if current {
+                                let _ = autostart::disable_autostart();
+                            } else {
+                                let _ = autostart::enable_autostart();
+                            }
+                        }
+                        "quit" => {
+                            app.exit(0);
+                        }
+                        _ => {}
+                    }
+                })
+                .on_tray_icon_event(|tray, event| {
+                    if let TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } = event {
+                        let app = tray.app_handle();
+                        if let Some(window) = app.get_webview_window("main") {
+                            if window.is_visible().unwrap_or(false) {
+                                let _ = window.hide();
+                            } else {
+                                let _ = window.show();
+                                let _ = window.set_focus();
+                            }
+                        }
+                    }
+                });
+
+            if let Some(icon) = app.default_window_icon() {
+                tray_builder = tray_builder.icon(icon.clone());
+            }
+            let _ = tray_builder.build(app);
 
             // Background task to stream media, battery, notifications, system stats, and calls
             let app_handle = app.handle().clone();
@@ -205,6 +321,8 @@ pub fn run() {
             get_active_call,
             get_system_stats,
             get_windows_username,
+            is_autostart_enabled,
+            set_autostart_enabled,
             set_notch_size,
             set_notch_expanded
         ])

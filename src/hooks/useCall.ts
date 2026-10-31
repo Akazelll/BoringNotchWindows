@@ -7,7 +7,7 @@ export function useCall() {
   const [call, setCall] = useState<CallInfo | null>(null);
   const timerRef = useRef<number | null>(null);
 
-  // Active call duration timer
+  // Active call duration timer: ONLY runs if user explicitly accepted the call (state === "active")
   useEffect(() => {
     if (call && call.state === "active") {
       timerRef.current = window.setInterval(() => {
@@ -34,20 +34,21 @@ export function useCall() {
     };
   }, [call?.state]);
 
-  // Listen to Windows Call detection (from Rust notifications & Win32 windows)
+  // Listen to Windows Call detection (Rust notifications & Win32 windows)
   useEffect(() => {
     let unlistenNotifs: (() => void) | undefined;
     let unlistenCall: (() => void) | undefined;
 
-    // 1. Initial check for any active call
+    // 1. Initial check for any active incoming call
     invoke<any>("get_active_call")
       .then((activeCall) => {
         if (activeCall) {
+          // ANY newly detected call must start in 'incoming' state
           setCall({
             callerName: activeCall.callerName || "Panggilan Masuk",
             callerNumber: activeCall.callerNumber || undefined,
             appSource: (activeCall.appSource as CallInfo["appSource"]) || "whatsapp",
-            state: activeCall.state || "incoming",
+            state: "incoming",
             durationSec: 0,
             isMuted: false,
             notifId: activeCall.notifId,
@@ -61,21 +62,25 @@ export function useCall() {
       if (event.payload) {
         const payload = event.payload;
         setCall((prev) => {
+          // If the user already accepted the call locally in Boring Notch, keep it active
           if (prev && prev.state === "active") {
             return prev;
           }
+          // Incoming calls must always be 'incoming'
           return {
             callerName: payload.callerName || "Panggilan Masuk",
             callerNumber: payload.callerNumber || undefined,
             appSource: (payload.appSource as CallInfo["appSource"]) || "whatsapp",
-            state: (payload.state as CallInfo["state"]) || "incoming",
-            durationSec: prev?.durationSec || 0,
-            isMuted: prev?.isMuted || false,
+            state: "incoming",
+            durationSec: 0,
+            isMuted: false,
             notifId: payload.notifId,
           };
         });
       } else {
+        // When backend reports call ended / dismissed:
         setCall((prev) => {
+          // If user didn't pick up (state was 'incoming'), dismiss immediately
           if (prev && prev.state === "incoming") {
             return null;
           }
@@ -88,7 +93,7 @@ export function useCall() {
       })
       .catch(() => {});
 
-    // 3. Fallback: Listen to notifications-changed
+    // 3. Listen to notifications-changed
     listen<AppNotification[]>("notifications-changed", (event) => {
       if (Array.isArray(event.payload)) {
         const notifs = event.payload;
@@ -96,23 +101,25 @@ export function useCall() {
 
         if (callNotif) {
           setCall((prev) => {
-            if (prev && prev.state === "active" && prev.notifId === callNotif.id) {
+            // Keep active if user already accepted
+            if (prev && prev.state === "active") {
               return prev;
             }
             return {
               callerName: callNotif.title || callNotif.appName,
               callerNumber: callNotif.message || undefined,
               appSource: (callNotif.appType as CallInfo["appSource"]) || "whatsapp",
-              state: prev?.state === "active" ? "active" : "incoming",
-              durationSec: prev?.durationSec || 0,
-              isMuted: prev?.isMuted || false,
+              state: "incoming",
+              durationSec: 0,
+              isMuted: false,
               notifId: callNotif.id,
             };
           });
         } else {
+          // If the call notification disappeared (caller hung up / missed call):
           setCall((prev) => {
-            if (prev && prev.state === "incoming" && prev.notifId !== undefined) {
-              return null;
+            if (prev && prev.state === "incoming") {
+              return null; // Telepon tidak diangkat: jangan masuk ke durasi, kembali ke mode normal
             }
             return prev;
           });
@@ -155,6 +162,7 @@ export function useCall() {
     []
   );
 
+  // ONLY calling acceptCall() can put the call into 'active' state
   const acceptCall = useCallback(() => {
     setCall((prev) => {
       if (!prev) return null;
@@ -178,10 +186,10 @@ export function useCall() {
         state: "ended",
       };
     });
-    // Return smoothly to normal after 700ms
+    // Return smoothly to normal after 600ms
     setTimeout(() => {
       setCall(null);
-    }, 700);
+    }, 600);
   }, []);
 
   const toggleMute = useCallback(() => {

@@ -5,6 +5,7 @@ import { useBattery } from "./hooks/useBattery";
 import { useNotifications } from "./hooks/useNotifications";
 import { useSystemStats } from "./hooks/useSystemStats";
 import { useCall } from "./hooks/useCall";
+import { useOpacity } from "./hooks/useOpacity";
 import {
   useWindowResize,
   COMPACT_WIDTH,
@@ -28,6 +29,7 @@ export default function App() {
   const battery = useBattery();
   const { notifications, currentToast, dismissToast } = useNotifications();
   const stats = useSystemStats();
+  useOpacity(); // Maintains CSS variables --notch-opacity & --notch-blur from localStorage and System Tray
   const {
     call,
     acceptCall,
@@ -45,10 +47,13 @@ export default function App() {
       .catch(() => {});
   }, []);
 
-  // When an incoming call arrives, smoothly expand the notch to highlight the call
+  // When an incoming call arrives, smoothly expand the notch to highlight the call.
+  // When the call dismisses/cancels without being answered, collapse back to compact.
   useEffect(() => {
     if (call && call.state === "incoming") {
       setState("expanded");
+    } else if (!call) {
+      setState("compact");
     }
   }, [call?.state]);
 

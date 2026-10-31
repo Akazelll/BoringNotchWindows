@@ -117,7 +117,7 @@ export const ExpandedCard: React.FC<ExpandedCardProps> = ({
     : [];
 
   return (
-    <div className="w-full h-full flex flex-col justify-between p-3.5 text-white box-border select-none bg-[#000000]">
+    <div className="w-full h-full flex flex-col justify-between p-3.5 text-white box-border select-none bg-transparent">
       {media ? (
         viewMode === "lyrics" ? (
           /* Lyrics View (Matching Player View with 3-line display and controls) */
@@ -333,7 +333,7 @@ export const ExpandedCard: React.FC<ExpandedCardProps> = ({
         )
       ) : (
         /* Standby System Resource Dashboard (Matching Reference Image 9 with Guaranteed Unclipped Footer) */
-        <div className="flex flex-col justify-between h-full bg-[#000000] py-0.5">
+        <div className="flex flex-col justify-between h-full bg-transparent py-0.5">
           {/* Header Row: Large Bold Time, Subtitle Date & Battery Capsule */}
           <div className="flex items-start justify-between pb-1">
             <div className="leading-none">
@@ -406,12 +406,13 @@ export const ExpandedCard: React.FC<ExpandedCardProps> = ({
             </div>
           </div>
 
-          {/* Footer: Activity Status & Windows Username (Guaranteed Clean, Padded, and 100% Visible) */}
-          <div className="flex items-center justify-between pt-1.5 pb-0.5 px-1 border-t border-white/[0.08]">
-            <div className="flex items-center gap-1.5">
+          {/* Footer: Activity Status & Windows Username (Clean, spacious, matching Gambar 9) */}
+          <div className="flex items-center justify-between pt-2 pb-0.5 px-1 border-t border-white/[0.08]">
+            <div className="flex items-center gap-2">
               <Activity className="w-3.5 h-3.5 text-[#38bdf8]" />
               <span className="text-xs text-[#d1d5db] font-medium">Normal</span>
             </div>
+
             <span className="text-xs text-[#8e94a4] font-bold uppercase tracking-wider">{username}</span>
           </div>
         </div>

@@ -118,27 +118,39 @@ pub fn fetch_active_notifications() -> Vec<AppNotification> {
                 app_type = "whatsapp".to_string();
             }
 
-            // Broad, multi-lingual call detection logic
-            let is_call = {
+            // Exclude missed calls, ended calls, cancelled calls from being considered an active incoming call
+            let is_missed_or_ended = full_text.contains("tak terjawab")
+                || full_text.contains("missed")
+                || full_text.contains("dibatalkan")
+                || full_text.contains("cancelled")
+                || full_text.contains("canceled")
+                || full_text.contains("berakhir")
+                || full_text.contains("ended")
+                || full_text.contains("ditolak")
+                || full_text.contains("declined");
+
+            // Strict incoming call detection: only true if actively ringing/incoming
+            let is_call = if is_missed_or_ended {
+                false
+            } else {
                 let is_comms = app_type == "whatsapp"
                     || app_type == "discord"
                     || app_type == "telegram"
                     || app_type == "teams"
                     || app_type == "phone";
 
-                let has_call_keyword = full_text.contains("panggilan")
+                let has_incoming_keyword = full_text.contains("panggilan masuk")
+                    || full_text.contains("panggilan suara masuk")
+                    || full_text.contains("panggilan video masuk")
                     || full_text.contains("memanggil")
-                    || full_text.contains("call")
-                    || full_text.contains("calling")
-                    || full_text.contains("ringing")
-                    || full_text.contains("incoming")
-                    || full_text.contains("telepon")
-                    || full_text.contains("voice call")
-                    || full_text.contains("video call")
-                    || full_text.contains("panggilan suara")
-                    || full_text.contains("panggilan video");
+                    || full_text.contains("berdering")
+                    || full_text.contains("incoming call")
+                    || full_text.contains("incoming voice call")
+                    || full_text.contains("incoming video call")
+                    || full_text.contains("is calling")
+                    || full_text.contains("ringing");
 
-                is_comms && has_call_keyword
+                is_comms && has_incoming_keyword
             };
 
             result.push(AppNotification {
@@ -208,7 +220,18 @@ pub fn detect_call_from_windows() -> Option<CallEventInfo> {
 
         let title_lower = title.to_lowercase();
 
-        // 1. WhatsApp Call Window detection
+        // Ignore windows showing missed or ended calls
+        let is_ended = title_lower.contains("tak terjawab")
+            || title_lower.contains("missed")
+            || title_lower.contains("ended")
+            || title_lower.contains("berakhir")
+            || title_lower.contains("dibatalkan")
+            || title_lower.contains("cancelled");
+        if is_ended {
+            return BOOL(1);
+        }
+
+        // 1. WhatsApp Call Window detection (Always incoming until user accepts)
         if exe_name.contains("whatsapp") {
             let is_call_win = title_lower.contains("panggilan")
                 || title_lower.contains("call")
@@ -221,11 +244,7 @@ pub fn detect_call_from_windows() -> Option<CallEventInfo> {
                     caller_name: title.clone(),
                     caller_number: Some("WhatsApp Call".to_string()),
                     app_source: "whatsapp".to_string(),
-                    state: if title_lower.contains("masuk") || title_lower.contains("incoming") {
-                        "incoming".to_string()
-                    } else {
-                        "active".to_string()
-                    },
+                    state: "incoming".to_string(),
                     notif_id: None,
                 });
                 return BOOL(0); // Stop enum
@@ -259,11 +278,7 @@ pub fn detect_call_from_windows() -> Option<CallEventInfo> {
                     caller_name: title.clone(),
                     caller_number: Some("Telegram Call".to_string()),
                     app_source: "telegram".to_string(),
-                    state: if title_lower.contains("incoming") || title_lower.contains("masuk") {
-                        "incoming".to_string()
-                    } else {
-                        "active".to_string()
-                    },
+                    state: "incoming".to_string(),
                     notif_id: None,
                 });
                 return BOOL(0);
@@ -272,7 +287,7 @@ pub fn detect_call_from_windows() -> Option<CallEventInfo> {
 
         // 4. Discord Voice / Call
         if exe_name.contains("discord") {
-            if title_lower.contains("call") || title_lower.contains("voice") {
+            if title_lower.contains("incoming call") || title_lower.contains("panggilan masuk") {
                 let mut lock = FOUND_CALL.lock().unwrap();
                 *lock = Some(CallEventInfo {
                     caller_name: title.clone(),

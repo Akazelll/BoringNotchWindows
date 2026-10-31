@@ -63,7 +63,7 @@ export const CallExpandedCard: React.FC<CallExpandedCardProps> = ({
 
   if (isIncoming) {
     return (
-      <div className="w-full h-full flex flex-col justify-between p-3 text-white box-border select-none bg-[#000000]">
+      <div className="w-full h-full flex flex-col justify-between p-3 text-white box-border select-none bg-transparent">
         {/* Top: Caller Info with animated avatar */}
         <div className="flex items-center gap-3">
           <div className="relative w-12 h-12 rounded-2xl bg-gradient-to-br from-emerald-600 to-teal-800 flex items-center justify-center flex-shrink-0 shadow-lg border border-emerald-500/30">
@@ -134,7 +134,7 @@ export const CallExpandedCard: React.FC<CallExpandedCardProps> = ({
 
   if (isActive) {
     return (
-      <div className="w-full h-full flex flex-col justify-between p-3 text-white box-border select-none bg-[#000000]">
+      <div className="w-full h-full flex flex-col justify-between p-3 text-white box-border select-none bg-transparent">
         {/* Header Row: Caller Avatar, Name, App Source */}
         <div className="flex items-center justify-between pb-1 border-b border-white/10">
           <div className="flex items-center gap-2.5">
@@ -202,7 +202,7 @@ export const CallExpandedCard: React.FC<CallExpandedCardProps> = ({
   }
 
   return (
-    <div className="w-full h-full flex flex-col items-center justify-center p-3 text-white select-none bg-[#000000]">
+    <div className="w-full h-full flex flex-col items-center justify-center p-3 text-white select-none bg-transparent">
       <PhoneOff className="w-7 h-7 text-neutral-500 mb-1" />
       <span className="text-sm font-bold text-neutral-300">Panggilan Berakhir</span>
     </div>

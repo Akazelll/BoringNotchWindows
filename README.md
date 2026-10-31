@@ -48,11 +48,22 @@ npm run dev
 ```
 Buka `http://localhost:1420` untuk menguji interaksi animasi, mock media player, dan transisi hover.
 
-### 2. Menjalankan Versi Desktop Windows (Tauri)
-Syarat:
-- Rust & Cargo (`rustup`)
-- Microsoft C++ Build Tools (MSVC)
-
+### 2. Menjalankan Versi Desktop Windows (Tauri Dev Mode)
 ```bash
 npm run tauri dev
 ```
+
+### 3. Membuat File Installer Standalone (.exe)
+Untuk membuat installer utuh yang bisa di-install di Windows mana pun dan otomatis terdaftar di Windows:
+```bash
+npm run tauri build
+```
+File installer NSIS setup wizard mandiri akan otomatis terbentuk di:
+`src-tauri/target/release/bundle/nsis/Boring Notch_0.1.0_x64-setup.exe`
+
+### 4. Pengaturan Otomatis Nyala saat Windows Boot (Startup Apps)
+1. **Lewat Notch**: Buka notch saat standby (mode expanded), di sudut kanan bawah terdapat tombol **`Startup: On / Off`**. Klik untuk mengaktifkan.
+2. **Lewat Windows**: Begitu diaktifkan, aplikasi otomatis terdaftar di:
+   - **Task Manager Windows** -> tab **Startup apps** (`Boring Notch`)
+   - **Windows Settings** -> **Apps** -> **Startup**
+   Pengguna bisa langsung menghidupkan atau mematikan dari pengaturan resmi Windows.

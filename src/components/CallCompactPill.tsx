@@ -37,7 +37,7 @@ export const CallCompactPill: React.FC<CallCompactPillProps> = ({
 
   if (isIncoming) {
     return (
-      <div className="w-full h-full flex items-center justify-between px-3 text-white select-none bg-[#000000] animate-in fade-in duration-200">
+      <div className="w-full h-full flex items-center justify-between px-3 text-white select-none bg-transparent animate-in fade-in duration-200">
         {/* Left: Caller info with ringing icon */}
         <div className="flex items-center gap-2 min-w-0 max-w-[170px]">
           <div className="relative w-6 h-6 rounded-full bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center flex-shrink-0">
@@ -86,7 +86,7 @@ export const CallCompactPill: React.FC<CallCompactPillProps> = ({
 
   if (isActive) {
     return (
-      <div className="w-full h-full flex items-center justify-between px-3 text-white select-none bg-[#000000]">
+      <div className="w-full h-full flex items-center justify-between px-3 text-white select-none bg-transparent">
         {/* Left: Caller info */}
         <div className="flex items-center gap-2 min-w-0 max-w-[150px]">
           <div className="w-6 h-6 rounded-full bg-[#16181f] border border-white/20 flex items-center justify-center flex-shrink-0">
@@ -121,7 +121,7 @@ export const CallCompactPill: React.FC<CallCompactPillProps> = ({
   }
 
   return (
-    <div className="w-full h-full flex items-center justify-center text-xs text-neutral-400 bg-[#000000]">
+    <div className="w-full h-full flex items-center justify-center text-xs text-neutral-400 bg-transparent">
       <span>Panggilan Berakhir</span>
     </div>
   );

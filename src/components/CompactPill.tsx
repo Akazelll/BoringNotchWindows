@@ -64,7 +64,7 @@ export const CompactPill: React.FC<CompactPillProps> = ({
   // Layout: App Icon (Kiri), Pengirim (Atas Tengah), Pesan (Bawah Tengah)
   if (currentToast) {
     return (
-      <div className="w-full h-full flex items-center justify-between px-3.5 text-white select-none bg-[#000000] animate-in fade-in duration-200">
+      <div className="w-full h-full flex items-center justify-between px-3.5 text-white select-none bg-transparent animate-in fade-in duration-200">
         <div className="flex items-center gap-3 min-w-0 flex-1 pl-0.5">
           {/* KIRI: Ikon Aplikasi */}
           <div className="relative w-7 h-7 rounded-full flex items-center justify-center bg-[#181a20] border border-white/20 flex-shrink-0 shadow-sm">
@@ -120,7 +120,7 @@ export const CompactPill: React.FC<CompactPillProps> = ({
 
   // 2. Normal Activity Mode
   return (
-    <div className="w-full h-full flex items-center justify-between px-3.5 text-white select-none bg-[#000000]">
+    <div className="w-full h-full flex items-center justify-between px-3.5 text-white select-none bg-transparent">
       {media ? (
         /* Media Mode: Cover + Title + Artist + Visualizer + App Source Icon (NO BATTERY) */
         <div className="flex items-center justify-between w-full">
