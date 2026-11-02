@@ -45,8 +45,8 @@ export function useMedia() {
   useEffect(() => {
     const timer = setInterval(() => {
       setMedia((prev) => {
-        if (!prev || !prev.isPlaying || prev.durationSec === 0) return prev;
-        if (prev.positionSec >= prev.durationSec) return prev;
+        if (!prev || !prev.isPlaying) return prev;
+        if (prev.durationSec > 0 && prev.positionSec >= prev.durationSec) return prev;
         return {
           ...prev,
           positionSec: prev.positionSec + 1,

@@ -3,7 +3,9 @@ mod power;
 mod notifications;
 mod sysinfo;
 mod autostart;
+mod bluetooth;
 
+use bluetooth::BluetoothDeviceInfo;
 use media::MediaInfo;
 use notifications::{AppNotification, CallEventInfo};
 use power::BatteryInfo;
@@ -98,6 +100,33 @@ fn set_notch_expanded(window: tauri::WebviewWindow, expanded: bool) {
     set_notch_size(window, w, h);
 }
 
+#[tauri::command]
+fn get_bluetooth_device() -> Option<BluetoothDeviceInfo> {
+    bluetooth::fetch_connected_bluetooth()
+}
+
+#[tauri::command]
+fn trigger_bluetooth_test(name: Option<String>, battery: Option<u8>) {
+    bluetooth::trigger_simulated_bluetooth(BluetoothDeviceInfo {
+        name: name.unwrap_or_else(|| "Baseus Encok WM01".to_string()),
+        battery_percent: battery.unwrap_or(79),
+        connected: true,
+        device_type: "headphones".to_string(),
+    });
+}
+
+#[tauri::command]
+fn trigger_notification_test(app_name: Option<String>, title: Option<String>, message: Option<String>) {
+    notifications::trigger_simulated_notification(AppNotification {
+        id: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as u32,
+        app_name: app_name.unwrap_or_else(|| "WhatsApp".to_string()),
+        app_type: "whatsapp".to_string(),
+        title: title.unwrap_or_else(|| "Budi Santoso".to_string()),
+        message: message.unwrap_or_else(|| "Halo bro, ada info terbaru nih!".to_string()),
+        is_call: false,
+    });
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -137,6 +166,9 @@ pub fn run() {
             let is_start = autostart::is_autostart_enabled();
             let autostart_item = CheckMenuItem::with_id(app, "toggle_autostart", "🚀 Jalankan saat Startup", true, is_start, None::<&str>)?;
 
+            let test_notif = MenuItem::with_id(app, "test_notif", "🔔 Tes Notifikasi Notch", true, None::<&str>)?;
+            let test_bluetooth = MenuItem::with_id(app, "test_bluetooth", "🎧 Tes Alert Bluetooth", true, None::<&str>)?;
+
             let quit_app = MenuItem::with_id(app, "quit", "❌ Keluar dari Boring Notch", true, None::<&str>)?;
 
             let tray_menu = Menu::with_items(app, &[
@@ -145,6 +177,8 @@ pub fn run() {
                 &PredefinedMenuItem::separator(app)?,
                 &transparency_menu,
                 &autostart_item,
+                &test_notif,
+                &test_bluetooth,
                 &PredefinedMenuItem::separator(app)?,
                 &quit_app,
             ])?;
@@ -189,6 +223,24 @@ pub fn run() {
                                 let _ = autostart::enable_autostart();
                             }
                         }
+                        "test_notif" => {
+                            notifications::trigger_simulated_notification(AppNotification {
+                                id: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as u32,
+                                app_name: "WhatsApp".to_string(),
+                                app_type: "whatsapp".to_string(),
+                                title: "Budi Santoso".to_string(),
+                                message: "Halo bro, ada pesan penting nih!".to_string(),
+                                is_call: false,
+                            });
+                        }
+                        "test_bluetooth" => {
+                            bluetooth::trigger_simulated_bluetooth(BluetoothDeviceInfo {
+                                name: "Baseus Encok WM01".to_string(),
+                                battery_percent: 85,
+                                connected: true,
+                                device_type: "headphones".to_string(),
+                            });
+                        }
                         "quit" => {
                             app.exit(0);
                         }
@@ -222,8 +274,9 @@ pub fn run() {
                 let mut last_pos = 0u64;
                 let mut last_battery_level = 255u8;
                 let mut last_charging = false;
-                let mut last_notif_ids = Vec::<u32>::new();
+                let mut last_active_notifs = Vec::<AppNotification>::new();
                 let mut last_call_key = String::new();
+                let mut last_bt_device = String::new();
                 let mut is_hidden_by_fullscreen = false;
 
                 loop {
@@ -279,9 +332,8 @@ pub fn run() {
 
                     // 5. Windows Notifications streaming
                     let active_notifs = notifications::fetch_active_notifications();
-                    let notif_ids: Vec<u32> = active_notifs.iter().map(|n| n.id).collect();
-                    if notif_ids != last_notif_ids {
-                        last_notif_ids = notif_ids;
+                    if active_notifs != last_active_notifs {
+                        last_active_notifs = active_notifs.clone();
                         let _ = app_handle.emit("notifications-changed", &active_notifs);
                     }
 
@@ -306,6 +358,17 @@ pub fn run() {
                     // 7. System Stats streaming
                     let stats = sysinfo::get_system_stats();
                     let _ = app_handle.emit("system-stats-changed", &stats);
+
+                    // 8. Bluetooth Connected Event Streaming
+                    if let Some(bt) = bluetooth::fetch_connected_bluetooth() {
+                        let bt_key = format!("{}::{}", bt.name, bt.battery_percent);
+                        if bt_key != last_bt_device {
+                            last_bt_device = bt_key;
+                            let _ = app_handle.emit("bluetooth-connected", &bt);
+                        }
+                    } else if !last_bt_device.is_empty() {
+                        last_bt_device.clear();
+                    }
                 }
             });
 
@@ -324,7 +387,10 @@ pub fn run() {
             is_autostart_enabled,
             set_autostart_enabled,
             set_notch_size,
-            set_notch_expanded
+            set_notch_expanded,
+            get_bluetooth_device,
+            trigger_bluetooth_test,
+            trigger_notification_test
         ])
         .run(tauri::generate_context!())
         .expect("error while running boring-notch");

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { AppNotification } from "../types";
@@ -6,10 +6,11 @@ import { AppNotification } from "../types";
 export function useNotifications() {
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [currentToast, setCurrentToast] = useState<AppNotification | null>(null);
-  const seenIdsRef = useRef<Set<number>>(new Set());
+  // Track notification ID -> content signature to detect both new IDs and updated messages on same ID
+  const seenSignaturesRef = useRef<Map<number, string>>(new Map());
   const timerRef = useRef<number | null>(null);
 
-  const showToast = (notif: AppNotification) => {
+  const showToast = useCallback((notif: AppNotification) => {
     if (timerRef.current) {
       window.clearTimeout(timerRef.current);
       timerRef.current = null;
@@ -18,16 +19,23 @@ export function useNotifications() {
     timerRef.current = window.setTimeout(() => {
       setCurrentToast(null);
       timerRef.current = null;
-    }, 4500); // Display toast for 4.5 seconds
-  };
+    }, 3000); // Display toast for 3.0 seconds
+  }, []);
 
-  const dismissToast = () => {
+  const dismissToast = useCallback(() => {
     if (timerRef.current) {
       window.clearTimeout(timerRef.current);
       timerRef.current = null;
     }
     setCurrentToast(null);
-  };
+  }, []);
+
+  const triggerTestNotification = useCallback(
+    (appName?: string, title?: string, message?: string) => {
+      invoke("trigger_notification_test", { appName, title, message }).catch(() => {});
+    },
+    []
+  );
 
   useEffect(() => {
     let unlisten: (() => void) | undefined;
@@ -37,7 +45,9 @@ export function useNotifications() {
       .then((notifs) => {
         if (Array.isArray(notifs)) {
           setNotifications(notifs);
-          notifs.forEach((n) => seenIdsRef.current.add(n.id));
+          notifs.forEach((n) => {
+            seenSignaturesRef.current.set(n.id, `${n.title}::${n.message}`);
+          });
         }
       })
       .catch((err) => {
@@ -50,20 +60,26 @@ export function useNotifications() {
         const notifs = event.payload;
         setNotifications(notifs);
 
-        // Detect if any new notification ID arrived
-        const newlyArrived = notifs.find((n) => !seenIdsRef.current.has(n.id));
+        // Detect if any new notification ID arrived OR existing notification got updated text
+        const newlyArrived = notifs.find((n) => {
+          const sig = `${n.title}::${n.message}`;
+          const prevSig = seenSignaturesRef.current.get(n.id);
+          return prevSig !== sig;
+        });
+
         if (newlyArrived) {
-          seenIdsRef.current.add(newlyArrived.id);
+          const sig = `${newlyArrived.title}::${newlyArrived.message}`;
+          seenSignaturesRef.current.set(newlyArrived.id, sig);
           showToast(newlyArrived);
         }
 
-        // Keep seen set synchronized
+        // Keep seen map synchronized with currently active notification IDs
         const activeIds = new Set(notifs.map((n) => n.id));
-        seenIdsRef.current.forEach((id) => {
+        for (const id of Array.from(seenSignaturesRef.current.keys())) {
           if (!activeIds.has(id)) {
-            seenIdsRef.current.delete(id);
+            seenSignaturesRef.current.delete(id);
           }
-        });
+        }
       }
     })
       .then((fn) => {
@@ -77,13 +93,14 @@ export function useNotifications() {
       if (unlisten) unlisten();
       if (timerRef.current) window.clearTimeout(timerRef.current);
     };
-  }, []);
+  }, [showToast]);
 
   return {
     notifications,
     currentToast,
     showToast,
     dismissToast,
+    triggerTestNotification,
     hasNotifications: notifications.length > 0,
   };
 }

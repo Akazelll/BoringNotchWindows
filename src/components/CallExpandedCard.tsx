@@ -1,14 +1,6 @@
 import React from "react";
 import { CallInfo } from "../types";
-import {
-  Phone,
-  PhoneOff,
-  Mic,
-  MicOff,
-  MessageCircle,
-  Gamepad2,
-  User,
-} from "lucide-react";
+import { Mic, MicOff, PhoneOff } from "lucide-react";
 
 interface CallExpandedCardProps {
   call: CallInfo;
@@ -25,6 +17,24 @@ function formatDuration(sec: number): string {
   return `${m < 10 ? "0" : ""}${m}:${s < 10 ? "0" : ""}${s}`;
 }
 
+function getInitials(name: string): string {
+  if (!name) return "AP";
+  const parts = name.trim().split(/\s+/);
+  if (parts.length === 1) {
+    return parts[0].slice(0, 2).toUpperCase();
+  }
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+function getAppHeader(appSource: string): string {
+  const s = (appSource || "").toLowerCase();
+  if (s.includes("whatsapp")) return "WhatsApp · Panggilan suara";
+  if (s.includes("telegram")) return "Telegram · Panggilan suara";
+  if (s.includes("discord")) return "Discord · Panggilan suara";
+  if (s.includes("teams")) return "Teams · Panggilan suara";
+  return "Telepon · Panggilan suara";
+}
+
 export const CallExpandedCard: React.FC<CallExpandedCardProps> = ({
   call,
   username = "User",
@@ -36,175 +46,287 @@ export const CallExpandedCard: React.FC<CallExpandedCardProps> = ({
   const isIncoming = call.state === "incoming";
   const isActive = call.state === "active";
 
-  const getAppLabel = () => {
-    switch (call.appSource) {
-      case "whatsapp":
-        return "WhatsApp Voice Call";
-      case "discord":
-        return "Discord Voice Call";
-      case "telegram":
-        return "Telegram Call";
-      case "teams":
-        return "Microsoft Teams";
-      default:
-        return "Incoming Voice Call";
-    }
-  };
+  const initials = getInitials(call.callerName);
+  const appHeader = getAppHeader(call.appSource);
+  const callerDetail = call.callerNumber
+    ? (call.callerNumber.startsWith("+") || call.callerNumber.startsWith("08")
+        ? `Seluler · ${call.callerNumber}`
+        : call.callerNumber)
+    : "Seluler · +62 812-3456-7890";
 
-  const getAppIcon = () => {
-    if (call.appSource === "whatsapp") {
-      return <MessageCircle className="w-3.5 h-3.5 text-emerald-400 fill-current" />;
-    }
-    if (call.appSource === "discord") {
-      return <Gamepad2 className="w-3.5 h-3.5 text-indigo-400" />;
-    }
-    return <Phone className="w-3.5 h-3.5 text-emerald-400" />;
-  };
-
+  // ═══ 1. INCOMING CALL (460x225px) ═══
   if (isIncoming) {
     return (
-      <div className="w-full h-full flex flex-col justify-between p-3 text-white box-border select-none bg-transparent">
-        {/* Top: Caller Info with animated avatar */}
-        <div className="flex items-center gap-3">
-          <div className="relative w-12 h-12 rounded-2xl bg-gradient-to-br from-emerald-600 to-teal-800 flex items-center justify-center flex-shrink-0 shadow-lg border border-emerald-500/30">
-            <User className="w-6 h-6 text-white" />
-            <span className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-emerald-500 flex items-center justify-center">
-              <Phone className="w-2.5 h-2.5 text-black fill-current" />
-            </span>
-          </div>
-
-          <div className="flex-1 min-w-0">
-            <div className="inline-flex items-center gap-1.5 bg-[#000000] border border-white/20 px-2 py-0.5 rounded-full text-[9px] font-bold text-emerald-400 tracking-wider uppercase mb-0.5">
-              {getAppIcon()}
-              <span>{getAppLabel()}</span>
+      <div
+        style={{
+          width: "100%",
+          height: "100%",
+          boxSizing: "border-box",
+          padding: "18px 24px 14px 24px",
+          background: "#09090b",
+          display: "flex",
+          flexDirection: "column",
+          justifyContent: "space-between",
+          fontFamily: "'Inter', -apple-system, 'SF Pro Display', system-ui, sans-serif",
+        }}
+        className="animate-in fade-in duration-200 select-none"
+      >
+        {/* Top Info Row: Caller Avatar + Text Info + Soundwave */}
+        <div style={{ display: "flex", flexDirection: "row", alignItems: "center", gap: "14px" }}>
+          {/* Avatar with Ring & Telephone Badge */}
+          <div style={{ position: "relative", width: "56px", height: "56px", flexShrink: 0 }}>
+            <div
+              style={{
+                position: "relative",
+                width: "56px",
+                height: "56px",
+                borderRadius: "50%",
+                background: "linear-gradient(145deg, #3a3f4b 0%, #1d2028 100%)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.14)",
+              }}
+            >
+              <span style={{ fontSize: "20px", fontWeight: 600, color: "#e4e4e7", letterSpacing: "-0.01em" }}>
+                {initials}
+              </span>
             </div>
-            <h3 className="text-base font-bold truncate text-white leading-tight">
-              {call.callerName}
-            </h3>
-            <p className="text-[11px] text-neutral-400 mt-0.5">
-              {call.callerNumber || "Panggilan suara masuk..."}
-            </p>
+            <div
+              style={{
+                position: "absolute",
+                right: "-2px",
+                bottom: "-2px",
+                width: "22px",
+                height: "22px",
+                borderRadius: "50%",
+                background: "#30D158",
+                border: "2px solid #09090b",
+                boxSizing: "border-box",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="#04210d" aria-hidden="true">
+                <path d="M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.25 11.4 11.4 0 0 0 3.6.57 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.45.57 3.57a1 1 0 0 1-.25 1z" />
+              </svg>
+            </div>
+          </div>
+
+          {/* Caller Text Detail */}
+          <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: "2px" }}>
+            <div style={{ fontSize: "11px", fontWeight: 600, letterSpacing: "0.04em", textTransform: "uppercase", color: "#30D158" }}>
+              {appHeader}
+            </div>
+            <div style={{ fontSize: "20px", fontWeight: 700, lineHeight: 1.15, color: "#ffffff", letterSpacing: "-0.02em", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+              {call.callerName || "Andi Pratama"}
+            </div>
+            <div style={{ fontSize: "13px", fontWeight: 500, color: "#a1a1aa" }}>
+              {callerDetail}
+            </div>
+          </div>
+
+          {/* Green Soundwave Equalizer */}
+          <div style={{ display: "flex", alignItems: "center", gap: "3px", height: "28px", flexShrink: 0 }} aria-hidden="true">
+            <div style={{ width: "3.5px", borderRadius: "2px", background: "#30D158", height: "12px" }} className="animate-sound-bar-1" />
+            <div style={{ width: "3.5px", borderRadius: "2px", background: "#30D158", height: "22px" }} className="animate-sound-bar-2" />
+            <div style={{ width: "3.5px", borderRadius: "2px", background: "#30D158", height: "15px" }} className="animate-sound-bar-3" />
+            <div style={{ width: "3.5px", borderRadius: "2px", background: "#30D158", height: "20px" }} className="animate-sound-bar-4" />
+            <div style={{ width: "3.5px", borderRadius: "2px", background: "#30D158", height: "10px" }} className="animate-sound-bar-1" />
           </div>
         </div>
 
-        {/* Middle: Sound wave ringing animation */}
-        <div className="flex items-center justify-center gap-1 h-6 my-1">
-          <span className="w-1 bg-emerald-400 rounded-full h-3 animate-pulse" />
-          <span className="w-1 bg-emerald-400 rounded-full h-5 animate-pulse delay-75" />
-          <span className="w-1 bg-emerald-400 rounded-full h-4 animate-pulse delay-150" />
-          <span className="w-1 bg-emerald-400 rounded-full h-6 animate-pulse delay-100" />
-          <span className="w-1 bg-emerald-400 rounded-full h-3 animate-pulse delay-200" />
-        </div>
-
-        {/* Bottom Row: Large Decline & Accept Action Buttons */}
-        <div className="flex items-center justify-between pt-1 border-t border-white/10">
-          <div className="text-[10px] text-neutral-500">Geser / Klik untuk merespon</div>
-
-          <div className="flex items-center gap-4">
-            {/* Decline (Red) */}
+        {/* Action Buttons: Tolak & Terima Pills (46px height) */}
+        <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+          <div style={{ display: "flex", flexDirection: "row", gap: "12px" }}>
+            {/* Tolak Button */}
             <button
               onClick={(e) => {
                 e.stopPropagation();
                 onDecline();
               }}
-              className="px-4 py-1.5 rounded-full bg-rose-600 hover:bg-rose-500 text-white flex items-center gap-1.5 text-xs font-semibold transition active:scale-95 cursor-pointer shadow-md"
+              style={{
+                flex: 1,
+                height: "46px",
+                borderRadius: "999px",
+                border: "none",
+                background: "#FF453A",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: "8px",
+                padding: 0,
+                color: "#ffffff",
+                fontSize: "15px",
+                fontWeight: 600,
+                letterSpacing: "-0.01em",
+                boxShadow: "0 6px 18px rgba(255,69,58,0.25)",
+                cursor: "pointer",
+              }}
+              className="active:scale-95 transition-all duration-150"
+              aria-label="Tolak panggilan"
             >
-              <PhoneOff className="w-4 h-4" />
-              <span>Tolak</span>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="#ffffff" aria-hidden="true" style={{ transform: "rotate(135deg)" }}>
+                <path d="M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.25 11.4 11.4 0 0 0 3.6.57 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.45.57 3.57a1 1 0 0 1-.25 1z" />
+              </svg>
+              Tolak
             </button>
 
-            {/* Accept (Green) */}
+            {/* Terima Button */}
             <button
               onClick={(e) => {
                 e.stopPropagation();
                 onAccept();
               }}
-              className="px-4 py-1.5 rounded-full bg-emerald-500 hover:bg-emerald-400 text-white flex items-center gap-1.5 text-xs font-semibold transition active:scale-95 cursor-pointer shadow-md animate-pulse"
+              style={{
+                flex: 1,
+                height: "46px",
+                borderRadius: "999px",
+                border: "none",
+                background: "#30D158",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: "8px",
+                padding: 0,
+                color: "#04210d",
+                fontSize: "15px",
+                fontWeight: 600,
+                letterSpacing: "-0.01em",
+                boxShadow: "0 6px 18px rgba(48,209,88,0.25)",
+                cursor: "pointer",
+              }}
+              className="active:scale-95 transition-all duration-150"
+              aria-label="Terima panggilan"
             >
-              <Phone className="w-4 h-4" />
-              <span>Terima</span>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="#04210d" aria-hidden="true">
+                <path d="M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.25 11.4 11.4 0 0 0 3.6.57 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.45.57 3.57a1 1 0 0 1-.25 1z" />
+              </svg>
+              Terima
             </button>
           </div>
 
-          <div className="text-[10px] text-neutral-400 font-semibold">{username}</div>
+          {/* Footer Hint */}
+          <div style={{ textAlign: "center", fontSize: "11px", fontWeight: 500, color: "#8a8a93" }}>
+            Klik untuk merespons
+          </div>
         </div>
       </div>
     );
   }
 
+  // ═══ 2. ACTIVE CALL (Ongoing Call UI) ═══
   if (isActive) {
     return (
-      <div className="w-full h-full flex flex-col justify-between p-3 text-white box-border select-none bg-transparent">
+      <div
+        style={{
+          width: "100%",
+          height: "100%",
+          boxSizing: "border-box",
+          padding: "20px 24px 16px 24px",
+          background: "#09090b",
+          display: "flex",
+          flexDirection: "column",
+          justifyContent: "space-between",
+          fontFamily: "'Inter', -apple-system, 'SF Pro Display', system-ui, sans-serif",
+        }}
+        className="animate-in fade-in duration-200 select-none"
+      >
         {/* Header Row: Caller Avatar, Name, App Source */}
-        <div className="flex items-center justify-between pb-1 border-b border-white/10">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-emerald-950/60 border border-emerald-500/30 flex items-center justify-center flex-shrink-0">
-              <User className="w-4 h-4 text-emerald-400" />
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingBottom: "10px", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            <div style={{ width: "40px", height: "40px", borderRadius: "50%", background: "linear-gradient(145deg, #3a3f4b 0%, #1d2028 100%)", border: "1px solid rgba(255,255,255,0.1)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+              <span style={{ fontSize: "16px", fontWeight: 600, color: "#ffffff" }}>{initials}</span>
             </div>
-            <div className="leading-tight">
-              <h3 className="text-sm font-bold text-white tracking-tight">{call.callerName}</h3>
-              <p className="text-[10px] text-emerald-400 font-medium">{getAppLabel()}</p>
+            <div style={{ display: "flex", flexDirection: "column", gap: "1px" }}>
+              <h3 style={{ fontSize: "16px", fontWeight: 700, color: "#ffffff", letterSpacing: "-0.01em" }}>{call.callerName}</h3>
+              <p style={{ fontSize: "11px", color: "#30D158", fontWeight: 600 }}>{appHeader}</p>
             </div>
           </div>
 
-          <div className="flex items-center gap-1.5 bg-[#000000] border border-white/20 rounded-full px-2.5 py-0.5 text-xs">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            <span className="text-[10px] text-neutral-400 font-medium">Terhubung</span>
+          <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "999px", padding: "4px 12px" }}>
+            <span style={{ width: "7px", height: "7px", borderRadius: "50%", background: "#30D158" }} className="animate-pulse" />
+            <span style={{ fontSize: "11px", color: "#d4d4d8", fontWeight: 500 }}>Terhubung</span>
           </div>
         </div>
 
         {/* Center: Live Large Duration Timer Display */}
-        <div className="flex flex-col items-center justify-center py-1">
-          <div className="text-2xl font-bold font-mono text-white tracking-wider drop-shadow-sm">
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "4px 0" }}>
+          <div style={{ fontSize: "36px", fontWeight: 600, fontVariantNumeric: "tabular-nums", color: "#ffffff", letterSpacing: "-0.02em" }}>
             {formatDuration(call.durationSec)}
           </div>
-          <p className="text-[10px] text-neutral-400 mt-0.5">
+          <p style={{ fontSize: "12px", color: "#a1a1aa", marginTop: "1px" }}>
             {call.isMuted ? "Mikrofon Dimatikan (Muted)" : "Panggilan Suara Aktif"}
           </p>
         </div>
 
-        {/* Bottom Control Actions: Mute, Red End Call, Speaker */}
-        <div className="flex items-center justify-between pt-1 border-t border-white/10">
-          {/* Mute Button */}
+        {/* Bottom Control Actions: Mute, Red End Call Pill */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingTop: "4px" }}>
           <button
             onClick={(e) => {
               e.stopPropagation();
               onToggleMute();
             }}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-xs font-medium transition cursor-pointer active:scale-95 ${
-              call.isMuted
-                ? "bg-rose-500/20 text-rose-400 border-rose-500/30"
-                : "bg-[#000000] text-neutral-300 border-white/20 hover:border-white/40"
-            }`}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "6px",
+              padding: "0 14px",
+              height: "38px",
+              borderRadius: "999px",
+              border: call.isMuted ? "1px solid rgba(255,69,58,0.4)" : "1px solid rgba(255,255,255,0.12)",
+              background: call.isMuted ? "rgba(255,69,58,0.16)" : "rgba(255,255,255,0.08)",
+              color: call.isMuted ? "#FF453A" : "#e4e4e7",
+              fontSize: "12px",
+              fontWeight: 600,
+              cursor: "pointer",
+            }}
+            className="active:scale-95 transition"
             title={call.isMuted ? "Aktifkan Mikrofon" : "Bisukan Mikrofon"}
           >
             {call.isMuted ? <MicOff className="w-3.5 h-3.5" /> : <Mic className="w-3.5 h-3.5" />}
-            <span className="text-[11px]">{call.isMuted ? "Unmute" : "Mute"}</span>
+            <span>{call.isMuted ? "Unmute" : "Mute"}</span>
           </button>
 
-          {/* Center End Call Button (Prominent Red) */}
+          {/* End Call Button Pill */}
           <button
             onClick={(e) => {
               e.stopPropagation();
               onEnd();
             }}
-            className="w-10 h-10 rounded-full bg-rose-600 hover:bg-rose-500 text-white flex items-center justify-center transition active:scale-90 cursor-pointer shadow-lg shadow-rose-950"
+            style={{
+              height: "38px",
+              padding: "0 22px",
+              borderRadius: "999px",
+              background: "#FF453A",
+              color: "#ffffff",
+              fontSize: "13px",
+              fontWeight: 600,
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "6px",
+              boxShadow: "0 4px 14px rgba(255,69,58,0.3)",
+              border: "none",
+              cursor: "pointer",
+            }}
+            className="active:scale-95 transition"
             title="Akhiri Panggilan"
           >
-            <PhoneOff className="w-4 h-4" />
+            <PhoneOff className="w-3.5 h-3.5" />
+            <span>Akhiri</span>
           </button>
 
-          {/* Right: Windows Username */}
-          <div className="text-[10px] text-neutral-400 font-semibold">{username}</div>
+          <div style={{ fontSize: "11px", color: "#8a8a93", fontWeight: 600, letterSpacing: "0.08em" }}>{username}</div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="w-full h-full flex flex-col items-center justify-center p-3 text-white select-none bg-transparent">
-      <PhoneOff className="w-7 h-7 text-neutral-500 mb-1" />
-      <span className="text-sm font-bold text-neutral-300">Panggilan Berakhir</span>
+    <div style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "#a1a1aa" }}>
+      <PhoneOff className="w-8 h-8 text-neutral-500 mb-2" />
+      <span style={{ fontSize: "15px", fontWeight: 600, color: "#d4d4d8" }}>Panggilan Berakhir</span>
     </div>
   );
 };

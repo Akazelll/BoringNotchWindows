@@ -49,5 +49,20 @@ export interface CallInfo {
   notifId?: number;
 }
 
+export interface BluetoothDeviceEvent {
+  name: string;
+  batteryPercent: number; // e.g. 79
+  connected: boolean;
+  deviceType: "headphones" | "speaker" | "mouse" | "keyboard" | "gamepad" | "phone" | "other";
+}
+
+export interface TodoItem {
+  id: string;
+  title: string;
+  timeSchedule?: string; // e.g. "19.00 - 20.00"
+  completed: boolean;
+  createdAt: number;
+}
+
 export type NotchState = "compact" | "expanded";
 export type NotchViewMode = "player" | "lyrics";

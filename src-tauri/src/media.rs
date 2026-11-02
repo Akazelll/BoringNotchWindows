@@ -168,81 +168,116 @@ fn load_thumbnail_safe(props: &GlobalSystemMediaTransportControlsSessionMediaPro
 
 #[cfg(windows)]
 pub fn fetch_current_media() -> Option<MediaInfo> {
-    let fresh_media = (|| -> Option<MediaInfo> {
-        let manager = get_session_manager()?;
-        let session = get_active_session(&manager)?;
-
-        let props = session.TryGetMediaPropertiesAsync().ok()?.get().ok()?;
-        let playback = session.GetPlaybackInfo().ok()?;
-        let timeline = session.GetTimelineProperties().ok();
-
-        let title = props.Title().map(|s| s.to_string()).unwrap_or_default();
-        let artist = props.Artist().map(|s| s.to_string()).unwrap_or_default();
-        let album = props.AlbumTitle().map(|s| s.to_string()).unwrap_or_default();
-        let source_app = session.SourceAppUserModelId().map(|s| s.to_string()).unwrap_or_default();
-
-        if title.trim().is_empty() && artist.trim().is_empty() {
+    let manager = match get_session_manager() {
+        Some(m) => m,
+        None => {
+            *LAST_VALID_MEDIA.lock().unwrap() = None;
+            *LAST_ACTIVE_APP.lock().unwrap() = None;
             return None;
         }
+    };
 
-        let is_playing = playback
-            .PlaybackStatus()
-            .map(|st| st == GlobalSystemMediaTransportControlsSessionPlaybackStatus::Playing)
-            .unwrap_or(false);
+    // If there are 0 sessions registered in Windows, all media players were closed!
+    if let Ok(sessions) = manager.GetSessions() {
+        if sessions.Size().unwrap_or(0) == 0 {
+            *LAST_VALID_MEDIA.lock().unwrap() = None;
+            *LAST_ACTIVE_APP.lock().unwrap() = None;
+            return None;
+        }
+    }
 
-        let (position_sec, duration_sec) = if let Some(tl) = timeline {
-            let pos = tl.Position().map(|d| (d.Duration / 10_000_000) as u64).unwrap_or(0);
-            let dur = tl.EndTime().map(|d| (d.Duration / 10_000_000) as u64).unwrap_or(0);
-            (pos, dur)
+    let session = match get_active_session(&manager) {
+        Some(s) => s,
+        None => {
+            // No active or valid paused session exists -> media player was closed or stopped!
+            *LAST_VALID_MEDIA.lock().unwrap() = None;
+            *LAST_ACTIVE_APP.lock().unwrap() = None;
+            return None;
+        }
+    };
+
+    let props = session.TryGetMediaPropertiesAsync().ok()?.get().ok()?;
+    let playback = session.GetPlaybackInfo().ok()?;
+    let timeline = session.GetTimelineProperties().ok();
+
+    let title = props.Title().map(|s| s.to_string()).unwrap_or_default();
+    let artist = props.Artist().map(|s| s.to_string()).unwrap_or_default();
+    let album = props.AlbumTitle().map(|s| s.to_string()).unwrap_or_default();
+    let source_app = session.SourceAppUserModelId().map(|s| s.to_string()).unwrap_or_default();
+
+    if title.trim().is_empty() && artist.trim().is_empty() {
+        *LAST_VALID_MEDIA.lock().unwrap() = None;
+        return None;
+    }
+
+    let is_playing = playback
+        .PlaybackStatus()
+        .map(|st| st == GlobalSystemMediaTransportControlsSessionPlaybackStatus::Playing)
+        .unwrap_or(false);
+
+    let (position_sec, duration_sec) = if let Some(tl) = timeline {
+        let dur = tl.EndTime().map(|d| (d.Duration / 10_000_000) as u64).unwrap_or(0);
+        let base_ticks = tl.Position().map(|d| d.Duration).unwrap_or(0);
+
+        let current_ticks = if is_playing {
+            if let Ok(last_updated) = tl.LastUpdatedTime() {
+                if last_updated.UniversalTime > 0 {
+                    // Windows FILETIME: 100ns intervals since Jan 1, 1601 UTC
+                    // UNIX_EPOCH is Jan 1, 1970 UTC (offset: 116_444_736_000_000_000 ticks)
+                    let now_ticks = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|d| (d.as_nanos() / 100) as i64 + 116_444_736_000_000_000)
+                        .unwrap_or(last_updated.UniversalTime);
+                    let elapsed = (now_ticks - last_updated.UniversalTime).max(0);
+                    base_ticks + elapsed
+                } else {
+                    base_ticks
+                }
+            } else {
+                base_ticks
+            }
         } else {
-            (0, 0)
+            base_ticks
         };
 
-        // Check cached thumbnail
-        let track_key = format!("{}::{}", title, artist);
-        let mut cache = CACHED_THUMBNAIL.lock().unwrap();
+        let final_pos = (current_ticks.max(0) / 10_000_000) as u64;
+        let clamped_pos = if dur > 0 && final_pos > dur { dur } else { final_pos };
+        (clamped_pos, dur)
+    } else {
+        (0, 0)
+    };
 
-        let thumbnail = if let Some((ref cached_key, ref cached_thumb)) = *cache {
-            if cached_key == &track_key {
-                cached_thumb.clone()
-            } else {
-                let new_thumb = load_thumbnail_safe(&props);
-                *cache = Some((track_key, new_thumb.clone()));
-                new_thumb
-            }
+    // Check cached thumbnail
+    let track_key = format!("{}::{}", title, artist);
+    let mut cache = CACHED_THUMBNAIL.lock().unwrap();
+
+    let thumbnail = if let Some((ref cached_key, ref cached_thumb)) = *cache {
+        if cached_key == &track_key {
+            cached_thumb.clone()
         } else {
             let new_thumb = load_thumbnail_safe(&props);
             *cache = Some((track_key, new_thumb.clone()));
             new_thumb
-        };
-
-        Some(MediaInfo {
-            title,
-            artist,
-            album,
-            thumbnail,
-            is_playing,
-            position_sec,
-            duration_sec,
-            source_app,
-        })
-    })();
-
-    if let Some(m) = fresh_media {
-        *LAST_VALID_MEDIA.lock().unwrap() = Some((m.clone(), std::time::Instant::now()));
-        Some(m)
-    } else {
-        // Fallback: Grace period (up to 30 seconds) for paused track during transient gaps
-        let last_lock = LAST_VALID_MEDIA.lock().unwrap();
-        if let Some((ref cached, instant)) = *last_lock {
-            if instant.elapsed() < Duration::from_secs(30) {
-                let mut paused = cached.clone();
-                paused.is_playing = false;
-                return Some(paused);
-            }
         }
-        None
-    }
+    } else {
+        let new_thumb = load_thumbnail_safe(&props);
+        *cache = Some((track_key, new_thumb.clone()));
+        new_thumb
+    };
+
+    let media_info = MediaInfo {
+        title,
+        artist,
+        album,
+        thumbnail,
+        is_playing,
+        position_sec,
+        duration_sec,
+        source_app,
+    };
+
+    *LAST_VALID_MEDIA.lock().unwrap() = Some((media_info.clone(), std::time::Instant::now()));
+    Some(media_info)
 }
 
 #[cfg(not(windows))]

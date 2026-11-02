@@ -22,23 +22,60 @@ pub struct CallEventInfo {
 }
 
 #[cfg(windows)]
+static SIMULATION_QUEUE: std::sync::Mutex<Vec<AppNotification>> = std::sync::Mutex::new(Vec::new());
+
+pub fn trigger_simulated_notification(notif: AppNotification) {
+    #[cfg(windows)]
+    if let Ok(mut lock) = SIMULATION_QUEUE.lock() {
+        lock.push(notif);
+    }
+}
+
+#[cfg(windows)]
 pub fn fetch_active_notifications() -> Vec<AppNotification> {
-    use windows::UI::Notifications::Management::UserNotificationListener;
+    use windows::UI::Notifications::Management::{UserNotificationListener, UserNotificationListenerAccessStatus};
     use windows::UI::Notifications::NotificationKinds;
 
     let mut result = Vec::new();
 
+    // 1. Drain any simulated notifications for testing
+    if let Ok(mut sim_lock) = SIMULATION_QUEUE.lock() {
+        if !sim_lock.is_empty() {
+            result.append(&mut sim_lock);
+        }
+    }
+
     let listener = match UserNotificationListener::Current() {
         Ok(l) => l,
-        Err(_) => return result,
+        Err(e) => {
+            eprintln!("[BoringNotch] UserNotificationListener::Current() failed: {:?}", e);
+            return result;
+        }
     };
+
+    // Ensure notification access is requested if unspecified
+    if let Ok(status) = listener.GetAccessStatus() {
+        if status == UserNotificationListenerAccessStatus::Unspecified {
+            if let Ok(op) = listener.RequestAccessAsync() {
+                let _ = op.get();
+            }
+        } else if status == UserNotificationListenerAccessStatus::Denied {
+            return result;
+        }
+    }
 
     let notifs = match listener.GetNotificationsAsync(NotificationKinds::Toast) {
         Ok(op) => match op.get() {
             Ok(n) => n,
-            Err(_) => return result,
+            Err(e) => {
+                eprintln!("[BoringNotch] GetNotificationsAsync op.get() failed: {:?}", e);
+                return result;
+            }
         },
-        Err(_) => return result,
+        Err(e) => {
+            eprintln!("[BoringNotch] GetNotificationsAsync failed: {:?}", e);
+            return result;
+        }
     };
 
     let count = notifs.Size().unwrap_or(0);

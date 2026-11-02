@@ -1,14 +1,16 @@
 import React, { useState, useEffect } from "react";
-import { MediaInfo, BatteryInfo, NotchViewMode, SystemStats, AppNotification } from "../types";
-import { WaveformScrubber } from "./WaveformScrubber";
-import { useLyrics } from "../hooks/useLyrics";
-import { CircularProgress, CustomBatteryPill } from "./CircularProgress";
-import { AppSourceBadge } from "./AppSourceBadge";
+import { MediaInfo, BatteryInfo, SystemStats, AppNotification } from "../types";
+import { isInvalidArtist, type LyricsHookResult } from "../hooks/useLyrics";
+import { PomodoroController } from "../hooks/usePomodoro";
+import { useTodoList } from "../hooks/useTodoList";
+import { LinearScrubber } from "./LinearScrubber";
+import { extractDominantColor, DEFAULT_ALBUM_COLOR } from "../utils/colorExtractor";
 import {
-  Music,
-  Mic2,
-  ChevronLeft,
   Activity,
+  Plus,
+  Pencil,
+  Check,
+  Trash2,
 } from "lucide-react";
 
 interface ExpandedCardProps {
@@ -20,53 +22,33 @@ interface ExpandedCardProps {
   onPlayPause: () => void;
   onNext: () => void;
   onPrev: () => void;
-  viewMode: NotchViewMode;
-  onToggleViewMode: (mode: NotchViewMode) => void;
+  isLyricsOpen: boolean;
+  onToggleLyrics: () => void;
+  pomodoro: PomodoroController;
+  lyricsData: LyricsHookResult;
 }
 
-// Pixel-perfect pause icon matching reference image (two thick rounded pill bars)
-const PauseIcon: React.FC<{ color?: string; size?: number }> = ({
-  color = "#000000",
+// Apple SF Symbol quote.bubble.fill matching Music_with_header.html
+const AppleLyricsIcon: React.FC<{ size?: number; className?: string }> = ({
   size = 18,
+  className = "",
 }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-    <rect x="5.5" y="3" width="4.5" height="18" rx="2.25" fill={color} />
-    <rect x="14" y="3" width="4.5" height="18" rx="2.25" fill={color} />
-  </svg>
-);
-
-// Pixel-perfect play icon matching reference image (thick rounded triangle)
-const PlayIcon: React.FC<{ color?: string; size?: number }> = ({
-  color = "#000000",
-  size = 18,
-}) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className="ml-0.5">
-    <path
-      d="M6 3.8C6 2.7 7.2 2.1 8.1 2.7L20.2 10.9C21.1 11.5 21.1 12.5 20.2 13.1L8.1 21.3C7.2 21.9 6 21.3 6 20.2V3.8Z"
-      fill={color}
-    />
-  </svg>
-);
-
-// Pixel-perfect previous icon matching reference image (|◀)
-const PrevIcon: React.FC<{ size?: number }> = ({ size = 15 }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-    <rect x="3" y="3.5" width="3" height="17" rx="1.5" fill="#ffffff" />
-    <path
-      d="M20 4.3C20 3.3 18.8 2.8 18 3.4L8.5 10.9C7.8 11.5 7.8 12.5 8.5 13.1L18 20.6C18.8 21.2 20 20.7 20 19.7V4.3Z"
-      fill="#ffffff"
-    />
-  </svg>
-);
-
-// Pixel-perfect next icon matching reference image (▶|)
-const NextIcon: React.FC<{ size?: number }> = ({ size = 15 }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-    <path
-      d="M4 4.3C4 3.3 5.2 2.8 6 3.4L15.5 10.9C16.2 11.5 16.2 12.5 15.5 13.1L6 20.6C5.2 21.2 4 20.7 4 19.7V4.3Z"
-      fill="#ffffff"
-    />
-    <rect x="18" y="3.5" width="3" height="17" rx="1.5" fill="#ffffff" />
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+    aria-hidden="true"
+  >
+    <path d="M7 4h10a4 4 0 0 1 4 4v5a4 4 0 0 1-4 4h-5.5L7.5 20.5V17H7a4 4 0 0 1-4-4V8a4 4 0 0 1 4-4z" />
+    <circle cx="9" cy="9.8" r="1.2" fill="currentColor" stroke="none" />
+    <circle cx="14.5" cy="9.8" r="1.2" fill="currentColor" stroke="none" />
+    <path d="M9 11.2c0 1.1-.4 1.8-1.1 2.3M14.5 11.2c0 1.1-.4 1.8-1.1 2.3" strokeWidth="1.7" />
   </svg>
 );
 
@@ -79,24 +61,42 @@ export const ExpandedCard: React.FC<ExpandedCardProps> = ({
   onPlayPause,
   onNext,
   onPrev,
-  viewMode,
-  onToggleViewMode,
+  isLyricsOpen,
+  onToggleLyrics,
+  pomodoro,
+  lyricsData,
 }) => {
+  const [currentPage, setCurrentPage] = useState<number>(0);
   const [dateStr, setDateStr] = useState<string>("");
   const [timeStr, setTimeStr] = useState<string>("");
+  const [ambientColor, setAmbientColor] = useState<[number, number, number]>(DEFAULT_ALBUM_COLOR);
 
-  const { lyrics, plainLyrics, currentLineIndex, isLoading } = useLyrics(media);
+  const { lyrics, plainLyrics, currentLineIndex, isLoading, cleanTitle, cleanArtist } = lyricsData;
+  const todoList = useTodoList();
 
+  const [isAddingTodo, setIsAddingTodo] = useState<boolean>(false);
+  const [newTodoTitle, setNewTodoTitle] = useState<string>("");
+  const [newTodoSchedule, setNewTodoSchedule] = useState<string>("");
+
+  const displayTitle = cleanTitle || media?.title || "Belum ada media";
+  const displayArtist = cleanArtist || (media?.artist && !isInvalidArtist(media.artist) ? media.artist : "Windows Audio");
+
+  // Extract dynamic color from album thumbnail
+  useEffect(() => {
+    extractDominantColor(media?.thumbnail || null).then((color) => {
+      setAmbientColor(color);
+    });
+  }, [media?.thumbnail]);
+
+  // Date & Time in Indonesian format (e.g. "Sabtu, 31 Okt 20.55")
   useEffect(() => {
     const updateTime = () => {
       const now = new Date();
-      setDateStr(
-        now.toLocaleDateString("id-ID", {
-          weekday: "long",
-          day: "numeric",
-          month: "long",
-        })
-      );
+      const dayName = now.toLocaleDateString("id-ID", { weekday: "short" });
+      const dayNum = now.getDate();
+      const monthName = now.toLocaleDateString("id-ID", { month: "short" });
+      setDateStr(`${dayName}, ${dayNum} ${monthName}`);
+
       const hours = String(now.getHours()).padStart(2, "0");
       const minutes = String(now.getMinutes()).padStart(2, "0");
       setTimeStr(`${hours}.${minutes}`);
@@ -106,317 +106,958 @@ export const ExpandedCard: React.FC<ExpandedCardProps> = ({
     return () => clearInterval(interval);
   }, []);
 
-  // Compute the 3 lines of lyrics: Previous, Active, Next
-  const activeIndex = currentLineIndex >= 0 ? currentLineIndex : 0;
-  const prevLine = activeIndex > 0 ? lyrics[activeIndex - 1]?.text : "";
-  const currentLine = lyrics[activeIndex]?.text || "";
-  const nextLine = lyrics[activeIndex + 1]?.text || "";
+  const totalPages = 4;
+  const handlePrevPage = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setCurrentPage((prev) => (prev > 0 ? prev - 1 : totalPages - 1));
+  };
+  const handleNextPage = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setCurrentPage((prev) => (prev < totalPages - 1 ? prev + 1 : 0));
+  };
+
+  // Synced 3 lines of lyrics for Split View
+  const isIntro = currentLineIndex < 0;
+  const currentLine = isIntro ? "♪ Musik Berjalan ♪" : lyrics[currentLineIndex]?.text || "";
+  const nextLine1 = isIntro
+    ? lyrics[0]?.text || "• • •"
+    : lyrics[currentLineIndex + 1]?.text || "• • •";
+  const nextLine2 = isIntro
+    ? lyrics[1]?.text || "• • •"
+    : lyrics[currentLineIndex + 2]?.text || "• • •";
 
   const plainLines = plainLyrics
-    ? plainLyrics.split("\n").filter((l) => l.trim().length > 0)
+    ? plainLyrics
+        .split("\n")
+        .map((l) => l.trim())
+        .filter((l) => l.length > 0 && !/^\[.*\]$/.test(l))
     : [];
 
-  return (
-    <div className="w-full h-full flex flex-col justify-between p-3.5 text-white box-border select-none bg-transparent">
-      {media ? (
-        viewMode === "lyrics" ? (
-          /* Lyrics View (Matching Player View with 3-line display and controls) */
-          <div className="w-full h-full flex flex-col justify-between">
-            {/* Lyrics Header */}
-            <div className="flex items-center justify-between border-b border-white/10 pb-1.5 mb-1">
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onToggleViewMode("player");
-                }}
-                className="flex items-center gap-1.5 text-xs font-semibold text-[#38bdf8] hover:text-sky-300 transition cursor-pointer"
-              >
-                <ChevronLeft className="w-4 h-4" />
-                <span>Player</span>
-              </button>
+  const plainIndex =
+    media && media.durationSec > 0 && plainLines.length > 0
+      ? Math.min(
+          Math.floor((media.positionSec / media.durationSec) * plainLines.length),
+          Math.max(0, plainLines.length - 1)
+        )
+      : 0;
 
-              <div className="text-xs text-neutral-400 font-medium truncate max-w-[240px]">
-                {media.title} — {media.artist}
+  const [r, g, b] = ambientColor;
+  // Boost vibrancy so the ambient glow is strikingly visible and rich on OLED black
+  const maxC = Math.max(r, g, b, 1);
+  const boostFactor = Math.max(1, 210 / maxC);
+  const vr = Math.min(255, Math.round(r * boostFactor));
+  const vg = Math.min(255, Math.round(g * boostFactor));
+  const vb = Math.min(255, Math.round(b * boostFactor));
+  const accentHex = `rgb(${vr}, ${vg}, ${vb})`;
+
+  // Header Battery Progress Ring calculations
+  const batteryRadius = 7.5;
+  const batteryCircumference = 2 * Math.PI * batteryRadius; // ~47.1
+  const batteryOffset = ((battery.level / 100) * batteryCircumference).toFixed(1);
+
+  // Pomodoro Progress Ring calculations
+  const pomodoroRadius = 30;
+  const pomodoroCircumference = 2 * Math.PI * pomodoroRadius; // ~188.5
+  const pomodoroDash = (pomodoro.progressRatio * pomodoroCircumference).toFixed(1);
+
+  return (
+    <div
+      style={{
+        width: "100%",
+        height: "100%",
+        boxSizing: "border-box",
+        background: "#09090b",
+        position: "relative",
+        overflow: "hidden",
+        borderRadius: "inherit",
+        fontFamily: "'Inter', -apple-system, 'SF Pro Display', system-ui, sans-serif",
+      }}
+      className="select-none"
+    >
+      {/* ─── FULL-CARD SEAMLESS AMBIENT GRADIENT (Touches every edge, 0px cut-off) ─── */}
+      {isLyricsOpen && currentPage === 0 && (
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            background: `radial-gradient(130% 100% at 50% 100%, rgba(${vr}, ${vg}, ${vb}, 0.68) 0%, rgba(${vr}, ${vg}, ${vb}, 0.24) 45%, rgba(9, 9, 11, 0) 80%), linear-gradient(to top, rgba(${vr}, ${vg}, ${vb}, 0.5) 0%, rgba(${vr}, ${vg}, ${vb}, 0.15) 35%, rgba(9, 9, 11, 0) 70%)`,
+            pointerEvents: "none",
+            borderRadius: "inherit",
+            zIndex: 0,
+          }}
+          aria-hidden="true"
+        />
+      )}
+
+      {/* ─── INNER CONTENT WRAPPER WITH MARGINS ─── */}
+      <div
+        style={{
+          width: "100%",
+          height: "100%",
+          boxSizing: "border-box",
+          padding: "14px 44px 10px 44px",
+          display: "flex",
+          flexDirection: "column",
+          justifyContent: "space-between",
+          position: "relative",
+          zIndex: 1,
+        }}
+      >
+        {/* ─── NAVIGATION CHEVRONS (Safe outer gutters at 10px) ─── */}
+        {!isLyricsOpen && (
+          <>
+            <button
+              onClick={handlePrevPage}
+              aria-label="Halaman sebelumnya"
+              style={{
+                position: "absolute",
+                left: "10px",
+                top: "50%",
+                marginTop: "-13px",
+                width: "26px",
+                height: "26px",
+                borderRadius: "50%",
+                border: "none",
+                background: "rgba(255,255,255,0.08)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                padding: 0,
+                cursor: "pointer",
+                zIndex: 20,
+              }}
+              className="hover:bg-white/20 active:scale-90 transition"
+              title="Halaman Sebelumnya"
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#d4d4d8" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M15 5l-7 7 7 7" />
+              </svg>
+            </button>
+
+            <button
+              onClick={handleNextPage}
+              aria-label="Halaman berikutnya"
+              style={{
+                position: "absolute",
+                right: "10px",
+                top: "50%",
+                marginTop: "-13px",
+                width: "26px",
+                height: "26px",
+                borderRadius: "50%",
+                border: "none",
+                background: "rgba(255,255,255,0.08)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                padding: 0,
+                cursor: "pointer",
+                zIndex: 20,
+              }}
+              className="hover:bg-white/20 active:scale-90 transition"
+              title="Halaman Berikutnya"
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#d4d4d8" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
+          </>
+        )}
+
+        {/* ══════════════════════════════════════════════════════════════════
+            PAGE 0: MUSIC PLAYER (Unified Smooth Sliding Layout)
+            ══════════════════════════════════════════════════════════════════ */}
+        {currentPage === 0 && (
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "row",
+              alignItems: "center",
+              width: "100%",
+              height: "100%",
+              overflow: "hidden",
+              position: "relative",
+            }}
+          >
+            {/* ─── MEDIA PLAYER PANEL (Exact Music Panel Design, Always Preserved) ─── */}
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: "8px",
+                width: isLyricsOpen ? "360px" : "100%",
+                flexShrink: 0,
+                minHeight: 0,
+                justifyContent: "flex-start",
+                position: "relative",
+                zIndex: 2,
+                transition: "width 350ms cubic-bezier(0.16, 1, 0.3, 1)",
+              }}
+            >
+              {/* Header: Battery Circle + Date & Time + Soundwave */}
+              <div style={{ display: "flex", flexDirection: "row", alignItems: "center", height: "18px" }}>
+                <div style={{ flex: 1 }} />
+                <div style={{ display: "inline-flex", alignItems: "center", gap: "8px" }}>
+                  <svg width="18" height="18" viewBox="0 0 22 22" fill="none" aria-hidden="true">
+                    <circle cx="11" cy="11" r={batteryRadius} stroke="rgba(255,255,255,0.14)" strokeWidth="2.6" />
+                    <circle cx="11" cy="11" r={batteryRadius} stroke="#5AA2FF" strokeWidth="2.6" strokeLinecap="round" strokeDasharray={`${batteryOffset} ${batteryCircumference.toFixed(1)}`} transform="rotate(-90 11 11)" />
+                  </svg>
+                  <span style={{ fontSize: "13px", fontWeight: 500, color: "#a1a1aa" }}>{dateStr}</span>
+                  <span style={{ fontSize: "13px", fontWeight: 700, color: "#ffffff", fontVariantNumeric: "tabular-nums" }}>{timeStr}</span>
+                </div>
+                <div style={{ flex: 1, display: "flex", justifyContent: "flex-end" }}>
+                  <svg width="18" height="15" viewBox="0 0 22 18" fill="none" stroke="#5AA2FF" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+                    <path d="M3 7v4M7 4v10M11 1v16M15 5v8M19 7v4" />
+                  </svg>
+                </div>
+              </div>
+
+              {/* Track Info Row: Album Art 68x68 + Title & Artist */}
+              <div style={{ display: "flex", flexDirection: "row", alignItems: "center", gap: "14px" }}>
+                <div style={{ position: "relative", width: "68px", height: "68px", flexShrink: 0 }}>
+                  <div
+                    style={{
+                      position: "absolute",
+                      left: "4px",
+                      top: "10px",
+                      width: "60px",
+                      height: "60px",
+                      borderRadius: "18px",
+                      background: accentHex,
+                      filter: "blur(16px)",
+                      opacity: 0.4,
+                    }}
+                  />
+                  <div
+                    style={{
+                      position: "relative",
+                      width: "68px",
+                      height: "68px",
+                      borderRadius: "16px",
+                      background: "linear-gradient(145deg, #7E9BFF 0%, #4A3FD0 55%, #1B1457 100%)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.18)",
+                      overflow: "hidden",
+                    }}
+                  >
+                    {media?.thumbnail ? (
+                      <img src={media.thumbnail} alt="cover" className="w-full h-full object-cover" />
+                    ) : (
+                      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#ffffff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <path d="M9 18V6l11-2v12" />
+                        <circle cx="6.5" cy="18" r="2.5" />
+                        <circle cx="17.5" cy="16" r="2.5" />
+                      </svg>
+                    )}
+                  </div>
+                </div>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: "3px", minWidth: 0, flex: 1 }}>
+                  <div style={{ fontSize: "18px", fontWeight: 700, lineHeight: 1.2, color: "#ffffff", letterSpacing: "-0.015em", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {displayTitle}
+                  </div>
+                  <div style={{ fontSize: "13px", fontWeight: 500, color: "#a1a1aa", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {displayArtist}
+                  </div>
+                </div>
+              </div>
+
+              {/* Scrubber */}
+              <LinearScrubber
+                positionSec={media ? media.positionSec : 0}
+                durationSec={media ? media.durationSec : 0}
+              />
+
+              {/* Bottom Controls Row (Height 44px) */}
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  height: "44px",
+                }}
+              >
+                {/* Lyrics Button */}
+                <div style={{ flex: isLyricsOpen ? 0 : 1, display: "flex", alignItems: "center" }}>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onToggleLyrics();
+                    }}
+                    aria-label={isLyricsOpen ? "Tutup lirik" : "Tampilkan lirik"}
+                    style={{
+                      width: "36px",
+                      height: "36px",
+                      borderRadius: "50%",
+                      border: isLyricsOpen ? "1px solid #5AA2FF" : "none",
+                      background: isLyricsOpen ? "rgba(90,162,255,0.16)" : "rgba(255,255,255,0.07)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      padding: 0,
+                      cursor: "pointer",
+                      color: isLyricsOpen ? "#5AA2FF" : "#ffffff",
+                      transition: "all 250ms ease",
+                    }}
+                    className="hover:bg-white/15 active:scale-95"
+                    title={isLyricsOpen ? "Tutup Lirik" : "Buka Lirik"}
+                  >
+                    <AppleLyricsIcon size={17} />
+                  </button>
+                </div>
+
+                {/* Playback Controls (Prev, Play/Pause, Next) */}
+                <div style={{ display: "flex", alignItems: "center", gap: isLyricsOpen ? "10px" : "14px" }}>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onPrev();
+                    }}
+                    aria-label="Mundur"
+                    style={{
+                      width: "38px",
+                      height: "38px",
+                      borderRadius: "50%",
+                      border: "none",
+                      background: "transparent",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      padding: 0,
+                      cursor: "pointer",
+                    }}
+                    className="hover:text-white text-white/80 active:scale-90 transition"
+                    title="Previous Track"
+                  >
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="#ffffff" aria-hidden="true">
+                      <path d="M11 6v12L3 12zM21 6v12l-8-6z" />
+                    </svg>
+                  </button>
+
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onPlayPause();
+                    }}
+                    aria-label={media?.isPlaying ? "Jeda" : "Putar"}
+                    style={{
+                      width: "44px",
+                      height: "44px",
+                      borderRadius: "50%",
+                      border: "none",
+                      background: "#ffffff",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      padding: 0,
+                      boxShadow: "0 0 0 4px rgba(255,255,255,0.08), 0 6px 18px rgba(90,162,255,0.25)",
+                      cursor: "pointer",
+                    }}
+                    className="active:scale-95 transition"
+                    title={media?.isPlaying ? "Pause" : "Play"}
+                  >
+                    {media?.isPlaying ? (
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="#09090b" aria-hidden="true">
+                        <rect x="6" y="5" width="4" height="14" rx="1.2" />
+                        <rect x="14" y="5" width="4" height="14" rx="1.2" />
+                      </svg>
+                    ) : (
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="#09090b" aria-hidden="true" style={{ marginLeft: "2px" }}>
+                        <path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z" />
+                      </svg>
+                    )}
+                  </button>
+
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onNext();
+                    }}
+                    aria-label="Maju"
+                    style={{
+                      width: "38px",
+                      height: "38px",
+                      borderRadius: "50%",
+                      border: "none",
+                      background: "transparent",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      padding: 0,
+                      cursor: "pointer",
+                    }}
+                    className="hover:text-white text-white/80 active:scale-90 transition"
+                    title="Next Track"
+                  >
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="#ffffff" aria-hidden="true">
+                      <path d="M13 6v12l8-6zM3 6v12l8-6z" />
+                    </svg>
+                  </button>
+                </div>
+
+                {/* Right spacer for balance */}
+                <div style={{ flex: isLyricsOpen ? 0 : 1 }} />
               </div>
             </div>
 
-            {/* Exactly 3 Lines of Lyrics: Previous, Current, Next */}
-            <div className="flex-1 flex flex-col justify-center items-center text-center px-3 py-1 space-y-2 overflow-hidden">
+            {/* ─── LYRICS PANEL (Smoothly Slides in from Right & Fades in) ─── */}
+            <div
+              style={{
+                position: "relative",
+                flex: isLyricsOpen ? 1 : "0 0 0px",
+                maxWidth: isLyricsOpen ? "300px" : "0px",
+                opacity: isLyricsOpen ? 1 : 0,
+                transform: isLyricsOpen ? "translateX(0px)" : "translateX(35px)",
+                pointerEvents: isLyricsOpen ? "auto" : "none",
+                minWidth: 0,
+                marginLeft: isLyricsOpen ? "20px" : "0px",
+                paddingLeft: isLyricsOpen ? "20px" : "0px",
+                borderLeft: isLyricsOpen ? "1px solid rgba(255,255,255,0.12)" : "1px solid transparent",
+                display: "flex",
+                flexDirection: "column",
+                justifyContent: "center",
+                gap: "10px",
+                overflow: "hidden",
+                transition: "flex 350ms cubic-bezier(0.16, 1, 0.3, 1), max-width 350ms cubic-bezier(0.16, 1, 0.3, 1), opacity 320ms cubic-bezier(0.16, 1, 0.3, 1), transform 350ms cubic-bezier(0.16, 1, 0.3, 1), margin-left 350ms cubic-bezier(0.16, 1, 0.3, 1), padding-left 350ms cubic-bezier(0.16, 1, 0.3, 1), border-left-color 300ms ease",
+              }}
+            >
               {isLoading ? (
-                <div className="flex flex-col items-center justify-center text-neutral-400 text-xs py-2">
-                  <span className="w-5 h-5 border-2 border-[#38bdf8] border-t-transparent rounded-full animate-spin mb-1.5" />
-                  <span className="text-xs">Mencari lirik lagu...</span>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", color: "#a1a1aa", fontSize: "13px" }}>
+                  <span className="w-3.5 h-3.5 border-2 border-[#5AA2FF] border-t-transparent rounded-full animate-spin" />
+                  <span>Mencari lirik lagu...</span>
                 </div>
               ) : lyrics.length > 0 ? (
                 <>
-                  {/* Line 1: Previous line (faded) */}
-                  <p className="text-xs text-neutral-500 font-medium truncate w-full h-5 transition-all duration-300">
-                    {prevLine || "• • •"}
-                  </p>
-                  {/* Line 2: Active / Current singing line (bright blue & highlighted) */}
-                  <p className="text-sm font-bold text-[#38bdf8] truncate w-full transition-all duration-300 scale-105 drop-shadow-sm px-1">
+                  <div style={{ fontSize: "18px", fontWeight: 700, lineHeight: 1.25, letterSpacing: "-0.015em", color: "#ffffff", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                     {currentLine || "♪ Musik Berjalan ♪"}
-                  </p>
-                  {/* Line 3: Next line (faded) */}
-                  <p className="text-xs text-neutral-500 font-medium truncate w-full h-5 transition-all duration-300">
-                    {nextLine || "• • •"}
-                  </p>
+                  </div>
+                  <div style={{ fontSize: "14px", fontWeight: 600, lineHeight: 1.3, color: "rgba(255,255,255,0.55)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {nextLine1 || "• • •"}
+                  </div>
+                  <div style={{ fontSize: "14px", fontWeight: 600, lineHeight: 1.3, color: "rgba(255,255,255,0.4)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {nextLine2 || "• • •"}
+                  </div>
                 </>
               ) : plainLines.length > 0 ? (
                 <>
-                  <p className="text-xs text-neutral-500 font-medium truncate w-full h-5">
-                    {plainLines[0] || ""}
-                  </p>
-                  <p className="text-sm font-bold text-[#38bdf8] truncate w-full scale-105">
-                    {plainLines[1] || plainLines[0]}
-                  </p>
-                  <p className="text-xs text-neutral-500 font-medium truncate w-full h-5">
-                    {plainLines[2] || ""}
-                  </p>
+                  <div style={{ fontSize: "18px", fontWeight: 700, lineHeight: 1.25, color: "#ffffff", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {plainLines[plainIndex] || "♪ Musik Berjalan ♪"}
+                  </div>
+                  <div style={{ fontSize: "14px", fontWeight: 600, lineHeight: 1.3, color: "rgba(255,255,255,0.55)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {plainLines[plainIndex + 1] || "• • •"}
+                  </div>
+                  <div style={{ fontSize: "14px", fontWeight: 600, lineHeight: 1.3, color: "rgba(255,255,255,0.4)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {plainLines[plainIndex + 2] || "• • •"}
+                  </div>
                 </>
               ) : (
-                <div className="flex flex-col items-center justify-center text-neutral-400 text-xs text-center px-4 py-2">
-                  <Mic2 className="w-5 h-5 text-neutral-600 mb-1" />
-                  <span className="font-medium text-neutral-300 text-xs">Lirik tidak ditemukan</span>
-                  <span className="text-[10px] text-neutral-500 mt-0.5">Mendukung lagu Spotify & YouTube Music</span>
+                <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                  <div style={{ fontSize: "15px", fontWeight: 600, color: "#ffffff" }}>Lirik tidak ditemukan</div>
+                  <div style={{ fontSize: "12px", color: "#8a8a93" }}>Memutar audio SMTC Windows</div>
                 </div>
               )}
             </div>
+          </div>
+        )}
 
-            {/* Bottom Controls Row in Lyrics */}
-            <div className="flex items-center justify-between pt-1 border-t border-white/10">
-              <AppSourceBadge sourceApp={media.sourceApp} />
-
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onPrev();
-                  }}
-                  className="w-9 h-9 rounded-full bg-[#181a20] hover:bg-neutral-800 border border-white/15 text-white flex items-center justify-center transition active:scale-90 cursor-pointer shadow-sm"
-                  title="Previous"
-                >
-                  <PrevIcon size={14} />
-                </button>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onPlayPause();
-                  }}
-                  className="w-12 h-12 rounded-full bg-white text-black hover:bg-neutral-100 flex items-center justify-center shadow-[0_4px_16px_rgba(0,0,0,0.6)] transition active:scale-95 cursor-pointer"
-                  title={media.isPlaying ? "Pause" : "Play"}
-                >
-                  {media.isPlaying ? (
-                    <PauseIcon color="#000000" size={18} />
-                  ) : (
-                    <PlayIcon color="#000000" size={18} />
-                  )}
-                </button>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onNext();
-                  }}
-                  className="w-9 h-9 rounded-full bg-[#181a20] hover:bg-neutral-800 border border-white/15 text-white flex items-center justify-center transition active:scale-90 cursor-pointer shadow-sm"
-                  title="Next"
-                >
-                  <NextIcon size={14} />
-                </button>
-              </div>
-
-              <div className="text-xs text-[#8e94a4] font-bold tracking-wider uppercase">
-                {username}
-              </div>
+      {/* ══════════════════════════════════════════════════════════════════
+          PAGE 1: POMODORO TIMER (Matching 460x225px)
+          ══════════════════════════════════════════════════════════════════ */}
+      {currentPage === 1 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: "10px", width: "100%", flex: 1, minHeight: 0, justifyContent: "space-between" }} className="animate-in fade-in duration-200">
+          {/* Header Row: Date & Time Center, Session Dots Right */}
+          <div style={{ display: "flex", flexDirection: "row", alignItems: "center", height: "18px" }}>
+            <div style={{ flex: 1 }} />
+            <div style={{ display: "inline-flex", alignItems: "center", gap: "8px" }}>
+              <svg width="18" height="18" viewBox="0 0 22 22" fill="none" aria-hidden="true">
+                <circle cx="11" cy="11" r={batteryRadius} stroke="rgba(255,255,255,0.14)" strokeWidth="2.6" />
+                <circle cx="11" cy="11" r={batteryRadius} stroke="#5AA2FF" strokeWidth="2.6" strokeLinecap="round" strokeDasharray={`${batteryOffset} ${batteryCircumference.toFixed(1)}`} transform="rotate(-90 11 11)" />
+              </svg>
+              <span style={{ fontSize: "13px", fontWeight: 500, color: "#a1a1aa" }}>{dateStr}</span>
+              <span style={{ fontSize: "13px", fontWeight: 700, color: "#ffffff", fontVariantNumeric: "tabular-nums" }}>{timeStr}</span>
+            </div>
+            <div style={{ flex: 1, display: "flex", justifyContent: "flex-end", alignItems: "center", gap: "4px" }} role="img" aria-label="Sesi Pomodoro">
+              <div style={{ width: "7px", height: "7px", borderRadius: "50%", background: "#5AA2FF" }} />
+              <div style={{ width: "7px", height: "7px", borderRadius: "50%", background: "#5AA2FF" }} />
+              <div style={{ width: "7px", height: "7px", borderRadius: "50%", background: "rgba(255,255,255,0.2)" }} />
+              <div style={{ width: "7px", height: "7px", borderRadius: "50%", background: "rgba(255,255,255,0.2)" }} />
             </div>
           </div>
-        ) : (
-          /* Main Player View */
-          <>
-            {/* Top Section: Album Cover & Track Title */}
-            <div className="flex items-center gap-3">
-              <div className="relative w-14 h-14 rounded-2xl overflow-hidden flex-shrink-0 border border-white/20 group bg-[#000000] shadow-md">
-                {media.thumbnail ? (
-                  <img
-                    src={media.thumbnail}
-                    alt="album cover"
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                  />
-                ) : (
-                  <div className="w-full h-full bg-[#000000] flex items-center justify-center">
-                    <Music className="w-6 h-6 text-white" />
-                  </div>
-                )}
-              </div>
 
-              <div className="flex-1 min-w-0 pr-1">
-                <div className="inline-flex items-center gap-1.5 bg-[#181a20] border border-white/15 px-2.5 py-0.5 rounded-full text-[10px] font-bold text-[#38bdf8] tracking-wider uppercase mb-1">
-                  <span className="flex items-center gap-[2px]">
-                    <span className="w-0.5 h-2 bg-[#38bdf8] rounded-full animate-pulse" />
-                    <span className="w-0.5 h-3 bg-[#38bdf8] rounded-full animate-pulse delay-75" />
-                    <span className="w-0.5 h-1.5 bg-[#38bdf8] rounded-full animate-pulse delay-150" />
-                  </span>
-                  <span>NOW PLAYING</span>
+          {/* Middle Row: Left Circular Ring 68x68 + Center Countdown 44px + Reset */}
+          <div style={{ display: "flex", flexDirection: "row", alignItems: "center" }}>
+            <div style={{ width: "95px", display: "flex", flexDirection: "column", alignItems: "flex-start", gap: "6px" }}>
+              <div style={{ fontSize: "13px", fontWeight: 600, color: "#ffffff" }}>Pomodoro</div>
+              <div style={{ position: "relative", width: "68px", height: "68px" }}>
+                <svg width="68" height="68" viewBox="0 0 100 100" fill="none" aria-hidden="true">
+                  <circle cx="50" cy="50" r={pomodoroRadius} stroke="rgba(255,255,255,0.1)" strokeWidth="8" />
+                  <circle cx="50" cy="50" r={pomodoroRadius} stroke="#5AA2FF" strokeWidth="8" strokeLinecap="round" strokeDasharray={`${pomodoroDash} ${pomodoroCircumference.toFixed(1)}`} transform="rotate(-90 50 50)" />
+                </svg>
+                <div style={{ position: "absolute", left: 0, top: 0, width: "68px", height: "68px", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#ffffff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M10 2h4M12 2v3" />
+                    <circle cx="12" cy="14" r="8" />
+                    <path d="M12 14l3-3" />
+                  </svg>
                 </div>
-
-                <h3 className="text-base font-bold truncate text-white leading-tight tracking-tight">
-                  {media.title}
-                </h3>
-                <p className="text-xs font-medium text-neutral-400 truncate mt-0.5">
-                  {media.artist || "Windows Audio"}
-                </p>
               </div>
-
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onToggleViewMode("lyrics");
-                }}
-                className="p-2.5 rounded-xl bg-[#181a20] hover:bg-neutral-800 border border-white/15 text-neutral-400 hover:text-[#38bdf8] transition cursor-pointer flex-shrink-0 shadow-sm"
-                title="Lihat Lirik"
-              >
-                <Mic2 className="w-4 h-4" />
-              </button>
             </div>
 
-            {/* Middle Section: Waveform Audio Scrubber */}
-            <WaveformScrubber
-              positionSec={media.positionSec}
-              durationSec={media.durationSec}
-            />
-
-            {/* Bottom Controls Row: App Badge, Controls, Branding */}
-            <div className="flex items-center justify-between pt-1">
-              <AppSourceBadge sourceApp={media.sourceApp} />
-
-              <div className="flex items-center gap-3">
+            <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: "2px" }}>
+              <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+                <div style={{ fontSize: "44px", fontWeight: 600, lineHeight: 1.05, color: "#ffffff", letterSpacing: "-0.03em", fontVariantNumeric: "tabular-nums" }}>
+                  {pomodoro.timeFormatted}
+                </div>
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    onPrev();
+                    pomodoro.reset();
                   }}
-                  className="w-9 h-9 rounded-full bg-[#181a20] hover:bg-neutral-800 border border-white/15 text-white flex items-center justify-center transition active:scale-90 cursor-pointer shadow-sm"
-                  title="Previous"
+                  aria-label="Reset timer"
+                  style={{ position: "absolute", left: "100%", marginLeft: "10px", width: "30px", height: "30px", borderRadius: "50%", border: "none", background: "rgba(255,255,255,0.07)", display: "flex", alignItems: "center", justifyContent: "center", padding: 0, cursor: "pointer" }}
+                  className="hover:bg-white/15 active:scale-90 transition"
+                  title="Reset Timer"
                 >
-                  <PrevIcon size={14} />
-                </button>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onPlayPause();
-                  }}
-                  className="w-12 h-12 rounded-full bg-white text-black hover:bg-neutral-100 flex items-center justify-center shadow-[0_4px_16px_rgba(0,0,0,0.6)] transition active:scale-95 cursor-pointer"
-                  title={media.isPlaying ? "Pause" : "Play"}
-                >
-                  {media.isPlaying ? (
-                    <PauseIcon color="#000000" size={18} />
-                  ) : (
-                    <PlayIcon color="#000000" size={18} />
-                  )}
-                </button>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onNext();
-                  }}
-                  className="w-9 h-9 rounded-full bg-[#181a20] hover:bg-neutral-800 border border-white/15 text-white flex items-center justify-center transition active:scale-90 cursor-pointer shadow-sm"
-                  title="Next"
-                >
-                  <NextIcon size={14} />
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#d4d4d8" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M4 12a8 8 0 1 0 2.6-5.9" />
+                    <path d="M4 4v4.5h4.5" />
+                  </svg>
                 </button>
               </div>
-
-              <div className="text-xs text-[#8e94a4] font-bold tracking-wider uppercase">
-                {username}
+              <div style={{ fontSize: "12px", fontWeight: 500, color: "#a1a1aa" }}>
+                {pomodoro.mode === "focus" ? "Waktu fokus" : "Waktu istirahat"}
               </div>
             </div>
-          </>
-        )
-      ) : (
-        /* Standby System Resource Dashboard (Matching Reference Image 9 with Guaranteed Unclipped Footer) */
-        <div className="flex flex-col justify-between h-full bg-transparent py-0.5">
-          {/* Header Row: Large Bold Time, Subtitle Date & Battery Capsule */}
-          <div className="flex items-start justify-between pb-1">
-            <div className="leading-none">
-              <h2 className="text-2xl font-extrabold text-white tracking-tight leading-none">
-                {timeStr}
-              </h2>
-              <p className="text-[11px] text-[#8e94a4] mt-1 capitalize font-medium">
-                {dateStr}
-              </p>
-            </div>
 
-            <CustomBatteryPill level={battery.level} isCharging={battery.isCharging} />
+            <div style={{ width: "95px" }} />
           </div>
 
-          {/* Center: 3 Circular Progress Meter Cards (CPU, RAM, Disk C:) */}
-          <div className="grid grid-cols-3 gap-2.5 my-2">
-            {/* CPU Card */}
-            <div className="bg-[#13141a] border border-white/[0.08] rounded-xl p-2.5 flex flex-col items-center justify-between shadow-sm">
-              <CircularProgress
-                percent={stats.cpuPercent}
-                size={48}
-                strokeWidth={4.5}
-                strokeColor="#38bdf8"
-                trackColor="#222530"
-              >
-                <span className="text-xs font-bold text-white font-mono">
-                  {stats.cpuPercent}%
-                </span>
-              </CircularProgress>
-              <span className="text-[11px] font-bold text-white mt-1.5 leading-none">CPU</span>
-              <span className="text-[10px] text-[#8e94a4] font-medium mt-0.5 leading-none">Live</span>
-            </div>
+          {/* Bottom Actions: Istirahat Pill + Play/Pause Pill + Fokus Pill */}
+          <div style={{ display: "flex", flexDirection: "row", alignItems: "center", justifyContent: "center", gap: "10px" }}>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                pomodoro.setMode("break");
+              }}
+              style={{
+                height: "36px",
+                boxSizing: "border-box",
+                padding: "0 14px 0 11px",
+                borderRadius: "999px",
+                border: pomodoro.mode === "break" ? "1px solid #5AA2FF" : "none",
+                background: pomodoro.mode === "break" ? "rgba(90,162,255,0.16)" : "rgba(255,255,255,0.07)",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "6px",
+                color: pomodoro.mode === "break" ? "#ffffff" : "#e4e4e7",
+                fontSize: "12px",
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+              className="active:scale-95 transition"
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M4 9h12v5a4 4 0 0 1-4 4H8a4 4 0 0 1-4-4z" />
+                <path d="M16 11h1.5a2.5 2.5 0 0 1 0 5H16" />
+                <path d="M8 3v2.5M12 3v2.5" />
+              </svg>
+              Istirahat
+            </button>
 
-            {/* RAM Card */}
-            <div className="bg-[#13141a] border border-white/[0.08] rounded-xl p-2.5 flex flex-col items-center justify-between shadow-sm">
-              <CircularProgress
-                percent={stats.ramPercent}
-                size={48}
-                strokeWidth={4.5}
-                strokeColor="#38bdf8"
-                trackColor="#222530"
-              >
-                <span className="text-xs font-bold text-white font-mono">
-                  {stats.ramPercent}%
-                </span>
-              </CircularProgress>
-              <span className="text-[11px] font-bold text-white mt-1.5 leading-none">RAM</span>
-              <span className="text-[10px] text-[#8e94a4] font-medium mt-0.5 leading-none truncate max-w-full">
-                {stats.ramUsedGb} / {stats.ramTotalGb} GB
-              </span>
-            </div>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                pomodoro.togglePlayPause();
+              }}
+              style={{
+                width: "56px",
+                height: "38px",
+                borderRadius: "999px",
+                border: "none",
+                background: "#5AA2FF",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                padding: 0,
+                boxShadow: "0 6px 18px rgba(90,162,255,0.3)",
+                cursor: "pointer",
+              }}
+              className="active:scale-95 transition"
+              title={pomodoro.isRunning ? "Pause Pomodoro" : "Mulai Pomodoro"}
+            >
+              {pomodoro.isRunning ? (
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="#07101f" aria-hidden="true">
+                  <rect x="6" y="5" width="4" height="14" rx="1.2" />
+                  <rect x="14" y="5" width="4" height="14" rx="1.2" />
+                </svg>
+              ) : (
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="#07101f" aria-hidden="true" style={{ marginLeft: "2px" }}>
+                  <path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z" />
+                </svg>
+              )}
+            </button>
 
-            {/* Disk Card */}
-            <div className="bg-[#13141a] border border-white/[0.08] rounded-xl p-2.5 flex flex-col items-center justify-between shadow-sm">
-              <CircularProgress
-                percent={stats.diskPercent}
-                size={48}
-                strokeWidth={4.5}
-                strokeColor="#38bdf8"
-                trackColor="#222530"
-              >
-                <span className="text-xs font-bold text-white font-mono">
-                  {stats.diskPercent}%
-                </span>
-              </CircularProgress>
-              <span className="text-[11px] font-bold text-white mt-1.5 leading-none">Disk C:</span>
-              <span className="text-[10px] text-[#8e94a4] font-medium mt-0.5 leading-none truncate max-w-full">
-                {stats.diskUsedGb} / {stats.diskTotalGb} GB
-              </span>
-            </div>
-          </div>
-
-          {/* Footer: Activity Status & Windows Username (Clean, spacious, matching Gambar 9) */}
-          <div className="flex items-center justify-between pt-2 pb-0.5 px-1 border-t border-white/[0.08]">
-            <div className="flex items-center gap-2">
-              <Activity className="w-3.5 h-3.5 text-[#38bdf8]" />
-              <span className="text-xs text-[#d1d5db] font-medium">Normal</span>
-            </div>
-
-            <span className="text-xs text-[#8e94a4] font-bold uppercase tracking-wider">{username}</span>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                pomodoro.setMode("focus");
+              }}
+              style={{
+                height: "36px",
+                boxSizing: "border-box",
+                padding: "0 14px 0 11px",
+                borderRadius: "999px",
+                border: pomodoro.mode === "focus" ? "1px solid #5AA2FF" : "none",
+                background: pomodoro.mode === "focus" ? "rgba(90,162,255,0.16)" : "rgba(255,255,255,0.07)",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "6px",
+                color: pomodoro.mode === "focus" ? "#ffffff" : "#e4e4e7",
+                fontSize: "12px",
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+              className="active:scale-95 transition"
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <circle cx="12" cy="12" r="9" />
+                <circle cx="12" cy="12" r="5" />
+                <circle cx="12" cy="12" r="1.2" fill="currentColor" />
+              </svg>
+              Fokus
+            </button>
           </div>
         </div>
       )}
+
+      {/* ══════════════════════════════════════════════════════════════════
+          PAGE 2: TO-DO LIST (Matching 460x225px)
+          ══════════════════════════════════════════════════════════════════ */}
+      {currentPage === 2 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: "10px", width: "100%", flex: 1, minHeight: 0, justifyContent: "space-between" }} className="animate-in fade-in duration-200">
+          {/* Header Row */}
+          <div style={{ display: "flex", flexDirection: "row", alignItems: "center", height: "18px" }}>
+            <div style={{ flex: 1 }} />
+            <div style={{ display: "inline-flex", alignItems: "center", gap: "8px" }}>
+              <svg width="18" height="18" viewBox="0 0 22 22" fill="none" aria-hidden="true">
+                <circle cx="11" cy="11" r={batteryRadius} stroke="rgba(255,255,255,0.14)" strokeWidth="2.6" />
+                <circle cx="11" cy="11" r={batteryRadius} stroke="#5AA2FF" strokeWidth="2.6" strokeLinecap="round" strokeDasharray={`${batteryOffset} ${batteryCircumference.toFixed(1)}`} transform="rotate(-90 11 11)" />
+              </svg>
+              <span style={{ fontSize: "13px", fontWeight: 500, color: "#a1a1aa" }}>{dateStr}</span>
+              <span style={{ fontSize: "13px", fontWeight: 700, color: "#ffffff", fontVariantNumeric: "tabular-nums" }}>{timeStr}</span>
+            </div>
+            <div style={{ flex: 1, display: "flex", justifyContent: "flex-end" }}>
+              <div style={{ padding: "3px 8px", borderRadius: "999px", background: "rgba(255,255,255,0.07)", fontSize: "11px", fontWeight: 600, color: "#d4d4d8" }}>
+                {todoList.remainingCount} tersisa
+              </div>
+            </div>
+          </div>
+
+          {/* Middle Body */}
+          <div style={{ display: "flex", flexDirection: "row", alignItems: "stretch", gap: "16px", flex: 1, minHeight: 0 }}>
+            {/* Left Column (140px) */}
+            <div style={{ width: "140px", flexShrink: 0, display: "flex", flexDirection: "column", gap: "3px", justifyContent: "center" }}>
+              <div style={{ fontSize: "13px", fontWeight: 600, color: "#ffffff" }}>To-do</div>
+              <div style={{ fontSize: "40px", fontWeight: 600, lineHeight: 1.05, color: "#ffffff", letterSpacing: "-0.03em", fontVariantNumeric: "tabular-nums" }}>
+                {todoList.completedCount}/{todoList.totalCount}
+              </div>
+              <div style={{ fontSize: "11px", fontWeight: 500, color: "#a1a1aa" }}>Tugas selesai hari ini</div>
+
+              <div style={{ display: "flex", flexDirection: "row", gap: "6px", paddingTop: "6px" }}>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsAddingTodo(true);
+                  }}
+                  style={{ height: "30px", boxSizing: "border-box", padding: "0 10px 0 8px", borderRadius: "999px", border: "none", background: "rgba(90,162,255,0.16)", display: "inline-flex", alignItems: "center", gap: "4px", color: "#ffffff", fontSize: "12px", fontWeight: 600, cursor: "pointer" }}
+                  className="active:scale-95 transition"
+                  title="Tambah tugas"
+                >
+                  <Plus className="w-3.5 h-3.5 text-[#5AA2FF]" />
+                  <span>Tambah</span>
+                </button>
+
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    todoList.setIsEditing(!todoList.isEditing);
+                  }}
+                  style={{ width: "30px", height: "30px", borderRadius: "50%", border: "none", background: todoList.isEditing ? "rgba(90,162,255,0.25)" : "rgba(255,255,255,0.07)", display: "flex", alignItems: "center", justifyContent: "center", padding: 0, cursor: "pointer", color: todoList.isEditing ? "#5AA2FF" : "#e4e4e7" }}
+                  className="active:scale-95 transition"
+                  title="Kelola tugas"
+                >
+                  <Pencil className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Right Task List Column */}
+            <div style={{ position: "relative", flex: 1, minWidth: 0, display: "flex", flexDirection: "row", gap: "8px" }}>
+              <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: "5px", overflowY: "auto", maxHeight: "115px" }}>
+                {isAddingTodo && (
+                  <div style={{ padding: "6px 10px", borderRadius: "12px", background: "rgba(90,162,255,0.12)", border: "1px solid rgba(90,162,255,0.25)", display: "flex", flexDirection: "column", gap: "4px" }}>
+                    <input
+                      type="text"
+                      value={newTodoTitle}
+                      onChange={(e) => setNewTodoTitle(e.target.value)}
+                      placeholder="Nama tugas..."
+                      autoFocus
+                      style={{ background: "transparent", border: "none", outline: "none", fontSize: "13px", color: "#ffffff" }}
+                    />
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                      <input
+                        type="text"
+                        value={newTodoSchedule}
+                        onChange={(e) => setNewTodoSchedule(e.target.value)}
+                        placeholder="Jadwal (e.g. 19.00 - 20.00)"
+                        style={{ background: "transparent", border: "none", outline: "none", fontSize: "10px", color: "#a1a1aa" }}
+                      />
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (newTodoTitle.trim()) {
+                              todoList.addTodo(newTodoTitle, newTodoSchedule || undefined);
+                              setNewTodoTitle("");
+                              setNewTodoSchedule("");
+                              setIsAddingTodo(false);
+                            }
+                          }}
+                          style={{ fontSize: "11px", fontWeight: 700, color: "#5AA2FF", padding: "1px 6px", background: "rgba(90,162,255,0.15)", borderRadius: "4px" }}
+                        >
+                          Simpan
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setIsAddingTodo(false);
+                          }}
+                          style={{ fontSize: "11px", color: "#a1a1aa" }}
+                        >
+                          Batal
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {todoList.todos.map((todo) => (
+                  <div
+                    key={todo.id}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      todoList.toggleTodo(todo.id);
+                    }}
+                    style={{
+                      display: "flex",
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: "10px",
+                      height: "36px",
+                      boxSizing: "border-box",
+                      padding: "0 10px",
+                      borderRadius: "10px",
+                      background: todo.completed ? "rgba(90,162,255,0.14)" : "rgba(255,255,255,0.04)",
+                      cursor: "pointer",
+                    }}
+                    className="hover:bg-white/10 transition"
+                  >
+                    <div
+                      style={{
+                        width: "18px",
+                        height: "18px",
+                        flexShrink: 0,
+                        borderRadius: "50%",
+                        background: todo.completed ? "#5AA2FF" : "transparent",
+                        border: todo.completed ? "none" : "1.8px solid rgba(255,255,255,0.4)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                    >
+                      {todo.completed && <Check className="w-3 h-3 text-[#07101f] stroke-[3.2]" />}
+                    </div>
+
+                    <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: "1px" }}>
+                      <div
+                        style={{
+                          fontSize: "13px",
+                          fontWeight: 600,
+                          color: todo.completed ? "#a1a1aa" : "#ffffff",
+                          textDecoration: todo.completed ? "line-through" : "none",
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                        }}
+                      >
+                        {todo.title}
+                      </div>
+                      {todo.timeSchedule && (
+                        <div style={{ fontSize: "10px", fontWeight: 500, color: "#a1a1aa", fontVariantNumeric: "tabular-nums" }}>
+                          {todo.timeSchedule}
+                        </div>
+                      )}
+                    </div>
+
+                    {todoList.isEditing && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          todoList.deleteTodo(todo.id);
+                        }}
+                        className="text-neutral-500 hover:text-rose-400 p-0.5"
+                        title="Hapus"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              {/* Custom Scrollbar */}
+              <div style={{ width: "3px", alignSelf: "stretch", margin: "2px 0", borderRadius: "1.5px", background: "rgba(255,255,255,0.12)" }} aria-hidden="true">
+                <div style={{ width: "3px", height: "62%", borderRadius: "1.5px", background: "rgba(255,255,255,0.7)" }} />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══════════════════════════════════════════════════════════════════
+          PAGE 3: HARDWARE MONITOR (Matching 460x225px)
+          ══════════════════════════════════════════════════════════════════ */}
+      {currentPage === 3 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: "12px", width: "100%", flex: 1, minHeight: 0, justifyContent: "space-between" }} className="animate-in fade-in duration-200">
+          {/* Header Row */}
+          <div style={{ display: "flex", flexDirection: "row", alignItems: "center", justifyContent: "space-between", height: "18px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              <div style={{ fontSize: "20px", fontWeight: 600, color: "#ffffff", letterSpacing: "-0.02em", fontVariantNumeric: "tabular-nums" }}>
+                {timeStr}
+              </div>
+              <div style={{ fontSize: "12px", fontWeight: 500, color: "#a1a1aa" }}>
+                {dateStr}
+              </div>
+            </div>
+            <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", padding: "4px 10px", borderRadius: "999px", background: "rgba(255,255,255,0.07)", color: "#ffffff", fontSize: "12px", fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>
+              <svg width="18" height="10" viewBox="0 0 20 12" fill="none" aria-hidden="true">
+                <rect x="0.5" y="0.5" width="16" height="11" rx="3" stroke="#a1a1aa" />
+                <rect x="2" y="2" width={`${Math.min(10.5, (battery.level / 100) * 10.5)}`} height="8" rx="1.8" fill="#5AA2FF" />
+                <rect x="17.5" y="4" width="2" height="4" rx="1" fill="#a1a1aa" />
+              </svg>
+              <span>{battery.level}%</span>
+            </div>
+          </div>
+
+          {/* 3 Circular Gauge Cards */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: "10px" }}>
+            {/* CPU */}
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "8px", padding: "12px 6px 10px 6px", borderRadius: "20px", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.06)" }}>
+              <div style={{ position: "relative", width: "62px", height: "62px" }}>
+                <svg width="62" height="62" viewBox="0 0 80 80" fill="none" aria-hidden="true">
+                  <circle cx="40" cy="40" r="30" stroke="rgba(255,255,255,0.1)" strokeWidth="8" />
+                  <circle cx="40" cy="40" r="30" stroke="#5AA2FF" strokeWidth="8" strokeLinecap="round" strokeDasharray={`${((stats.cpuPercent / 100) * 188.5).toFixed(1)} 188.5`} transform="rotate(-90 40 40)" />
+                </svg>
+                <div style={{ position: "absolute", left: 0, top: 0, width: "62px", height: "62px", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "15px", fontWeight: 600, color: "#ffffff", letterSpacing: "-0.02em", fontVariantNumeric: "tabular-nums" }}>
+                  {stats.cpuPercent}%
+                </div>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "1px" }}>
+                <div style={{ fontSize: "13px", fontWeight: 600, color: "#ffffff" }}>CPU</div>
+                <div style={{ fontSize: "10px", fontWeight: 500, color: "#a1a1aa" }}>Live</div>
+              </div>
+            </div>
+
+            {/* RAM */}
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "8px", padding: "12px 6px 10px 6px", borderRadius: "20px", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.06)" }}>
+              <div style={{ position: "relative", width: "62px", height: "62px" }}>
+                <svg width="62" height="62" viewBox="0 0 80 80" fill="none" aria-hidden="true">
+                  <circle cx="40" cy="40" r="30" stroke="rgba(255,255,255,0.1)" strokeWidth="8" />
+                  <circle cx="40" cy="40" r="30" stroke="#7FB7FF" strokeWidth="8" strokeLinecap="round" strokeDasharray={`${((stats.ramPercent / 100) * 188.5).toFixed(1)} 188.5`} transform="rotate(-90 40 40)" />
+                </svg>
+                <div style={{ position: "absolute", left: 0, top: 0, width: "62px", height: "62px", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "15px", fontWeight: 600, color: "#ffffff", letterSpacing: "-0.02em", fontVariantNumeric: "tabular-nums" }}>
+                  {stats.ramPercent}%
+                </div>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "1px" }}>
+                <div style={{ fontSize: "13px", fontWeight: 600, color: "#ffffff" }}>RAM</div>
+                <div style={{ fontSize: "10px", fontWeight: 500, color: "#a1a1aa" }}>{stats.ramUsedGb} / {stats.ramTotalGb} GB</div>
+              </div>
+            </div>
+
+            {/* DISK C: */}
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "8px", padding: "12px 6px 10px 6px", borderRadius: "20px", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.06)" }}>
+              <div style={{ position: "relative", width: "62px", height: "62px" }}>
+                <svg width="62" height="62" viewBox="0 0 80 80" fill="none" aria-hidden="true">
+                  <circle cx="40" cy="40" r="30" stroke="rgba(255,255,255,0.1)" strokeWidth="8" />
+                  <circle cx="40" cy="40" r="30" stroke="#64D2FF" strokeWidth="8" strokeLinecap="round" strokeDasharray={`${((stats.diskPercent / 100) * 188.5).toFixed(1)} 188.5`} transform="rotate(-90 40 40)" />
+                </svg>
+                <div style={{ position: "absolute", left: 0, top: 0, width: "62px", height: "62px", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "15px", fontWeight: 600, color: "#ffffff", letterSpacing: "-0.02em", fontVariantNumeric: "tabular-nums" }}>
+                  {stats.diskPercent}%
+                </div>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "1px" }}>
+                <div style={{ fontSize: "13px", fontWeight: 600, color: "#ffffff" }}>Disk C:</div>
+                <div style={{ fontSize: "10px", fontWeight: 500, color: "#a1a1aa" }}>{stats.diskUsedGb} / {stats.diskTotalGb} GB</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Footer Bar */}
+          <div style={{ display: "flex", flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingTop: "6px", borderTop: "1px solid rgba(255,255,255,0.08)" }}>
+            <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "12px", fontWeight: 500, color: "#d4d4d8" }}>
+              <Activity className="w-3.5 h-3.5 text-[#5AA2FF]" />
+              <span>Normal</span>
+            </div>
+            <div style={{ fontSize: "11px", fontWeight: 600, color: "#8a8a93", letterSpacing: "0.1em" }}>{username}</div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── BOTTOM PAGINATION DOTS (Completely isolated, zero overlap) ─── */}
+      {!isLyricsOpen && (
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            gap: "6px",
+            width: "100%",
+            height: "14px",
+            marginTop: "6px",
+            zIndex: 10,
+          }}
+          aria-hidden="true"
+        >
+          {[0, 1, 2, 3].map((idx) => {
+            const isActive = currentPage === idx;
+            return (
+              <button
+                key={idx}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setCurrentPage(idx);
+                }}
+                style={{
+                  width: isActive ? "16px" : "6px",
+                  height: "6px",
+                  borderRadius: "3px",
+                  background: isActive ? "#ffffff" : "rgba(255,255,255,0.25)",
+                  transition: "all 0.25s ease-out",
+                  border: "none",
+                  padding: 0,
+                  cursor: "pointer",
+                }}
+                aria-label={`Halaman ${idx + 1}`}
+              />
+            );
+          })}
+        </div>
+      )}
+      </div>
     </div>
   );
 };

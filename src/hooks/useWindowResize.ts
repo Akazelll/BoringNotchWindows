@@ -1,19 +1,87 @@
 import { useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { NotchViewMode, NotchState } from "../types";
+import { NotchState } from "../types";
 
-export const COMPACT_WIDTH = 375;
-export const COMPACT_HEIGHT = 42;
-export const EXPANDED_WIDTH = 420;
-export const EXPANDED_HEIGHT = 220;
+// Patented Notch Dimensions
+// Compact Idle, Media, Notification, and Bluetooth are standardized to 48px height
+export const COMPACT_IDLE_WIDTH = 270;
+export const COMPACT_MEDIA_WIDTH = 270;
+export const COMPACT_HEIGHT = 48;
 
-export function useWindowResize(state: NotchState, _viewMode?: NotchViewMode) {
+export const NOTIFICATION_BANNER_WIDTH = 280;
+export const NOTIFICATION_BANNER_HEIGHT = 48;
+
+export const BLUETOOTH_BANNER_WIDTH = 280;
+export const BLUETOOTH_BANNER_HEIGHT = 48;
+
+// Expanded Dimensions: Compact and clean (460x225px) to prevent bottom pagination dots collision
+export const EXPANDED_WIDTH = 460;
+export const EXPANDED_HEIGHT = 225;
+
+export const EXPANDED_LYRICS_WIDTH = 680;
+export const EXPANDED_LYRICS_HEIGHT = 225;
+
+export const CALL_EXPANDED_WIDTH = 460;
+export const CALL_EXPANDED_HEIGHT = 225;
+
+export const SYSTEM_MONITOR_WIDTH = 460;
+export const SYSTEM_MONITOR_HEIGHT = 225;
+
+export function useWindowResize(
+  state: NotchState,
+  isLyricsOpen: boolean = false,
+  isMediaPlaying: boolean = false,
+  isBluetoothBannerActive: boolean = false,
+  isNotificationActive: boolean = false,
+  isCallActive: boolean = false
+) {
   useEffect(() => {
-    const targetWidth = state === "expanded" ? EXPANDED_WIDTH : COMPACT_WIDTH;
-    const targetHeight = state === "expanded" ? EXPANDED_HEIGHT : COMPACT_HEIGHT;
+    let targetWidth: number;
+    let targetHeight: number;
 
-    invoke("set_notch_size", { width: targetWidth, height: targetHeight }).catch((err) => {
+    if (state === "expanded") {
+      if (isCallActive) {
+        targetWidth = CALL_EXPANDED_WIDTH;
+        targetHeight = CALL_EXPANDED_HEIGHT;
+      } else if (isLyricsOpen) {
+        targetWidth = EXPANDED_LYRICS_WIDTH;
+        targetHeight = EXPANDED_LYRICS_HEIGHT;
+      } else {
+        targetWidth = EXPANDED_WIDTH;
+        targetHeight = EXPANDED_HEIGHT;
+      }
+    } else {
+      // Compact modes
+      if (isBluetoothBannerActive) {
+        targetWidth = BLUETOOTH_BANNER_WIDTH;
+        targetHeight = BLUETOOTH_BANNER_HEIGHT;
+      } else if (isNotificationActive) {
+        targetWidth = NOTIFICATION_BANNER_WIDTH;
+        targetHeight = NOTIFICATION_BANNER_HEIGHT;
+      } else if (isMediaPlaying) {
+        targetWidth = COMPACT_MEDIA_WIDTH;
+        targetHeight = COMPACT_HEIGHT;
+      } else {
+        targetWidth = COMPACT_IDLE_WIDTH;
+        targetHeight = COMPACT_HEIGHT;
+      }
+    }
+
+    // Ear padding: 32px for expanded (16px ear each side), 24px for compact (12px ear each side)
+    const earPadding = state === "expanded" ? 32 : 24;
+
+    invoke("set_notch_size", {
+      width: targetWidth + earPadding,
+      height: targetHeight,
+    }).catch((err) => {
       console.error("Failed to resize notch window:", err);
     });
-  }, [state]);
+  }, [
+    state,
+    isLyricsOpen,
+    isMediaPlaying,
+    isBluetoothBannerActive,
+    isNotificationActive,
+    isCallActive,
+  ]);
 }
