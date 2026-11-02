@@ -80,9 +80,19 @@ export function useCall() {
       } else {
         // When backend reports call ended / dismissed:
         setCall((prev) => {
-          // If user didn't pick up (state was 'incoming'), dismiss immediately
-          if (prev && prev.state === "incoming") {
+          if (!prev) return null;
+          if (prev.state === "incoming") {
             return null;
+          }
+          if (prev.state === "active") {
+            // Call was ended remotely or by application
+            setTimeout(() => {
+              setCall(null);
+            }, 600);
+            return {
+              ...prev,
+              state: "ended",
+            };
           }
           return prev;
         });
@@ -162,8 +172,11 @@ export function useCall() {
     []
   );
 
-  // ONLY calling acceptCall() can put the call into 'active' state
+  // Calling acceptCall() sends answer signal to Windows/WhatsApp and activates call state
   const acceptCall = useCallback(() => {
+    invoke("answer_system_call").catch((err) => {
+      console.warn("answer_system_call:", err);
+    });
     setCall((prev) => {
       if (!prev) return null;
       return {
@@ -175,10 +188,16 @@ export function useCall() {
   }, []);
 
   const declineCall = useCallback(() => {
+    invoke("decline_system_call").catch((err) => {
+      console.warn("decline_system_call:", err);
+    });
     setCall(null);
   }, []);
 
   const endCall = useCallback(() => {
+    invoke("end_system_call").catch((err) => {
+      console.warn("end_system_call:", err);
+    });
     setCall((prev) => {
       if (!prev) return null;
       return {

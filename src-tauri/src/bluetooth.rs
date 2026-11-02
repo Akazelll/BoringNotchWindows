@@ -314,10 +314,24 @@ fn fetch_active_audio_endpoint(paired_devices: &[(String, u8)]) -> Option<Blueto
                                 let friendly_lower = friendly_name.to_lowercase();
                                 let is_bt_enumerator = enumerator.to_uppercase().contains("BTH");
 
+                                // Crucial fix: An endpoint is ONLY Bluetooth if managed by the Windows Bluetooth enumerator (BTHENUM, BTHHFENUM).
+                                // Wired 3.5mm jack (HDAUDIO), USB DACs, or internal soundcards must NEVER be treated as Bluetooth.
+                                if !is_bt_enumerator {
+                                    let _ = RegCloseKey(h_props);
+                                    let _ = RegCloseKey(h_dev);
+                                    continue;
+                                }
+
                                 let is_internal_speaker = friendly_lower.contains("realtek")
                                     || friendly_lower.contains("speakers (realtek")
                                     || friendly_lower.contains("internal")
                                     || friendly_lower.contains("microphone");
+
+                                if is_internal_speaker {
+                                    let _ = RegCloseKey(h_props);
+                                    let _ = RegCloseKey(h_dev);
+                                    continue;
+                                }
 
                                 // 1. Match against paired Bluetooth device names (e.g. "Baseus Encok WM01")
                                 for (bt_name, battery) in paired_devices {
@@ -334,20 +348,9 @@ fn fetch_active_audio_endpoint(paired_devices: &[(String, u8)]) -> Option<Blueto
                                     }
                                 }
 
-                                // 2. Check if enumerator is BTH or name indicates Bluetooth audio
-                                let is_bluetooth_keyword = friendly_lower.contains("bluetooth")
-                                    || friendly_lower.contains("hands-free")
-                                    || friendly_lower.contains("wireless")
-                                    || friendly_lower.contains("headset")
-                                    || friendly_lower.contains("headphones")
-                                    || friendly_lower.contains("buds")
-                                    || friendly_lower.contains("airpod")
-                                    || friendly_lower.contains("wm01")
-                                    || friendly_lower.contains("encok")
-                                    || friendly_lower.contains("tws");
-
-                                if (is_bt_enumerator || is_bluetooth_keyword) && !is_internal_speaker && !friendly_name.is_empty() {
-                                    let clean_name = if let (Some(s), Some(e)) = (friendly_name.find('('), friendly_name.rfind(')')) {
+                                // 2. Extract clean name for verified Bluetooth enumerator
+                                if !friendly_name.is_empty() {
+                                    let mut clean_name = if let (Some(s), Some(e)) = (friendly_name.find('('), friendly_name.rfind(')')) {
                                         if e > s + 1 {
                                             friendly_name[s + 1..e].trim().to_string()
                                         } else {
@@ -356,6 +359,26 @@ fn fetch_active_audio_endpoint(paired_devices: &[(String, u8)]) -> Option<Blueto
                                     } else {
                                         friendly_name.clone()
                                     };
+
+                                    let clean_lower = clean_name.to_lowercase();
+                                    let is_generic = clean_lower == "headset"
+                                        || clean_lower == "headphones"
+                                        || clean_lower == "headphone"
+                                        || clean_lower == "earphone"
+                                        || clean_lower == "audio"
+                                        || clean_lower.starts_with("hands-free")
+                                        || clean_lower.contains("hands-free");
+
+                                    if is_generic {
+                                        // Prefer paired Bluetooth device name if available
+                                        if let Some((bt_name, _)) = paired_devices.iter().find(|(n, _)| !n.is_empty() && friendly_lower.contains(&n.to_lowercase())) {
+                                            clean_name = bt_name.clone();
+                                        } else {
+                                            let _ = RegCloseKey(h_props);
+                                            let _ = RegCloseKey(h_dev);
+                                            continue;
+                                        }
+                                    }
 
                                     let battery_percent = get_cached_battery(&clean_name);
                                     let _ = RegCloseKey(h_props);
@@ -506,9 +529,9 @@ fn infer_device_type(name: &str) -> String {
         "headphones".to_string()
     } else if lower.contains("speaker") || lower.contains("soundbar") || lower.contains("jbl") {
         "speaker".to_string()
-    } else if lower.contains("mouse") {
+    } else if lower.contains("mouse") || lower.contains("master") || lower.contains("trackpad") {
         "mouse".to_string()
-    } else if lower.contains("keyboard") {
+    } else if lower.contains("keyboard") || lower.contains("keychron") {
         "keyboard".to_string()
     } else if lower.contains("controller") || lower.contains("gamepad") || lower.contains("xbox") {
         "gamepad".to_string()

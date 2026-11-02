@@ -60,6 +60,21 @@ fn get_active_call() -> Option<CallEventInfo> {
 }
 
 #[tauri::command]
+fn answer_system_call() -> Result<(), String> {
+    notifications::answer_system_call()
+}
+
+#[tauri::command]
+fn decline_system_call() -> Result<(), String> {
+    notifications::decline_or_end_system_call()
+}
+
+#[tauri::command]
+fn end_system_call() -> Result<(), String> {
+    notifications::decline_or_end_system_call()
+}
+
+#[tauri::command]
 fn get_system_stats() -> SystemStats {
     sysinfo::get_system_stats()
 }
@@ -361,10 +376,21 @@ pub fn run() {
 
                     // 8. Bluetooth Connected Event Streaming
                     if let Some(bt) = bluetooth::fetch_connected_bluetooth() {
-                        let bt_key = format!("{}::{}", bt.name, bt.battery_percent);
-                        if bt_key != last_bt_device {
-                            last_bt_device = bt_key;
-                            let _ = app_handle.emit("bluetooth-connected", &bt);
+                        let name_lower = bt.name.to_lowercase().trim().to_string();
+                        let is_generic = name_lower == "headset"
+                            || name_lower == "headphones"
+                            || name_lower == "headphone"
+                            || name_lower == "earphone"
+                            || name_lower == "audio"
+                            || name_lower == "bluetooth"
+                            || name_lower.starts_with("hands-free");
+
+                        if !is_generic {
+                            let bt_key = format!("{}::{}", bt.name, bt.battery_percent);
+                            if bt_key != last_bt_device {
+                                last_bt_device = bt_key;
+                                let _ = app_handle.emit("bluetooth-connected", &bt);
+                            }
                         }
                     } else if !last_bt_device.is_empty() {
                         last_bt_device.clear();
@@ -390,7 +416,10 @@ pub fn run() {
             set_notch_expanded,
             get_bluetooth_device,
             trigger_bluetooth_test,
-            trigger_notification_test
+            trigger_notification_test,
+            answer_system_call,
+            decline_system_call,
+            end_system_call
         ])
         .run(tauri::generate_context!())
         .expect("error while running boring-notch");

@@ -52,6 +52,63 @@ const AppleLyricsIcon: React.FC<{ size?: number; className?: string }> = ({
   </svg>
 );
 
+// Header Battery Donut with dynamic charging animation (matching Charging.dc.html)
+const HeaderBatteryDonut: React.FC<{ battery: BatteryInfo }> = ({ battery }) => {
+  const radius = 7.5;
+  const circumference = 2 * Math.PI * radius; // ~47.1
+  const offset = ((battery.level / 100) * circumference).toFixed(1);
+  const isCharging = battery.isCharging;
+
+  return (
+    <div
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: "5px",
+      }}
+      title={isCharging ? `Mengisi daya · ${battery.level}%` : `Baterai ${battery.level}%`}
+    >
+      <div style={{ position: "relative", width: "18px", height: "18px", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <svg
+          width="18"
+          height="18"
+          viewBox="0 0 22 22"
+          fill="none"
+          aria-hidden="true"
+          style={{
+            filter: isCharging ? "drop-shadow(0 0 4px rgba(48, 209, 88, 0.7))" : "none",
+          }}
+          className={isCharging ? "animate-pulse" : ""}
+        >
+          <circle cx="11" cy="11" r={radius} stroke="rgba(255,255,255,0.14)" strokeWidth="2.6" />
+          <circle
+            cx="11"
+            cy="11"
+            r={radius}
+            stroke={isCharging ? "#30D158" : "#5AA2FF"}
+            strokeWidth="2.6"
+            strokeLinecap="round"
+            strokeDasharray={`${offset} ${circumference.toFixed(1)}`}
+            transform="rotate(-90 11 11)"
+          />
+        </svg>
+        {isCharging && (
+          <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="#30D158" aria-hidden="true">
+              <path d="M13.5 2.5L5.5 13.2a.6.6 0 0 0 .5.95H10.5l-1 7.35a.4.4 0 0 0 .72.28l8.1-10.9a.6.6 0 0 0-.48-.96H13.3l.9-7.1a.4.4 0 0 0-.7-.32z" />
+            </svg>
+          </div>
+        )}
+      </div>
+      {isCharging && (
+        <span style={{ fontSize: "11px", fontWeight: 700, color: "#30D158", fontVariantNumeric: "tabular-nums" }}>
+          {battery.level}%
+        </span>
+      )}
+    </div>
+  );
+};
+
 export const ExpandedCard: React.FC<ExpandedCardProps> = ({
   media,
   battery,
@@ -150,11 +207,6 @@ export const ExpandedCard: React.FC<ExpandedCardProps> = ({
   const vb = Math.min(255, Math.round(b * boostFactor));
   const accentHex = `rgb(${vr}, ${vg}, ${vb})`;
 
-  // Header Battery Progress Ring calculations
-  const batteryRadius = 7.5;
-  const batteryCircumference = 2 * Math.PI * batteryRadius; // ~47.1
-  const batteryOffset = ((battery.level / 100) * batteryCircumference).toFixed(1);
-
   // Pomodoro Progress Ring calculations
   const pomodoroRadius = 30;
   const pomodoroCircumference = 2 * Math.PI * pomodoroRadius; // ~188.5
@@ -180,7 +232,8 @@ export const ExpandedCard: React.FC<ExpandedCardProps> = ({
           style={{
             position: "absolute",
             inset: 0,
-            background: `radial-gradient(130% 100% at 50% 100%, rgba(${vr}, ${vg}, ${vb}, 0.68) 0%, rgba(${vr}, ${vg}, ${vb}, 0.24) 45%, rgba(9, 9, 11, 0) 80%), linear-gradient(to top, rgba(${vr}, ${vg}, ${vb}, 0.5) 0%, rgba(${vr}, ${vg}, ${vb}, 0.15) 35%, rgba(9, 9, 11, 0) 70%)`,
+            background: `linear-gradient(to top, rgba(${vr}, ${vg}, ${vb}, 0.55) 0%, rgba(9, 9, 11, 0) 65%)`,
+            opacity: 0.55,
             pointerEvents: "none",
             borderRadius: "inherit",
             zIndex: 0,
@@ -195,7 +248,7 @@ export const ExpandedCard: React.FC<ExpandedCardProps> = ({
           width: "100%",
           height: "100%",
           boxSizing: "border-box",
-          padding: "14px 44px 10px 44px",
+          padding: isLyricsOpen && currentPage === 0 ? "18px 36px 14px 36px" : "14px 44px 10px 44px",
           display: "flex",
           flexDirection: "column",
           justifyContent: "space-between",
@@ -279,29 +332,29 @@ export const ExpandedCard: React.FC<ExpandedCardProps> = ({
               position: "relative",
             }}
           >
-            {/* ─── MEDIA PLAYER PANEL (Exact Music Panel Design, Always Preserved) ─── */}
+            {/* ─── MEDIA PLAYER PANEL (40% Grid) ─── */}
             <div
               style={{
                 display: "flex",
                 flexDirection: "column",
-                gap: "8px",
-                width: isLyricsOpen ? "360px" : "100%",
+                gap: isLyricsOpen ? "10px" : "8px",
+                width: isLyricsOpen ? "40%" : "100%",
+                flex: isLyricsOpen ? "4 4 0px" : "0 0 100%",
+                maxWidth: isLyricsOpen ? "40%" : "100%",
                 flexShrink: 0,
                 minHeight: 0,
-                justifyContent: "flex-start",
+                minWidth: 0,
+                justifyContent: "space-between",
                 position: "relative",
                 zIndex: 2,
-                transition: "width 350ms cubic-bezier(0.16, 1, 0.3, 1)",
+                transition: "all 350ms cubic-bezier(0.16, 1, 0.3, 1)",
               }}
             >
               {/* Header: Battery Circle + Date & Time + Soundwave */}
               <div style={{ display: "flex", flexDirection: "row", alignItems: "center", height: "18px" }}>
                 <div style={{ flex: 1 }} />
                 <div style={{ display: "inline-flex", alignItems: "center", gap: "8px" }}>
-                  <svg width="18" height="18" viewBox="0 0 22 22" fill="none" aria-hidden="true">
-                    <circle cx="11" cy="11" r={batteryRadius} stroke="rgba(255,255,255,0.14)" strokeWidth="2.6" />
-                    <circle cx="11" cy="11" r={batteryRadius} stroke="#5AA2FF" strokeWidth="2.6" strokeLinecap="round" strokeDasharray={`${batteryOffset} ${batteryCircumference.toFixed(1)}`} transform="rotate(-90 11 11)" />
-                  </svg>
+                  <HeaderBatteryDonut battery={battery} />
                   <span style={{ fontSize: "13px", fontWeight: 500, color: "#a1a1aa" }}>{dateStr}</span>
                   <span style={{ fontSize: "13px", fontWeight: 700, color: "#ffffff", fontVariantNumeric: "tabular-nums" }}>{timeStr}</span>
                 </div>
@@ -312,16 +365,16 @@ export const ExpandedCard: React.FC<ExpandedCardProps> = ({
                 </div>
               </div>
 
-              {/* Track Info Row: Album Art 68x68 + Title & Artist */}
+              {/* Track Info Row: Album Art 76x76 + Title & Artist */}
               <div style={{ display: "flex", flexDirection: "row", alignItems: "center", gap: "14px" }}>
-                <div style={{ position: "relative", width: "68px", height: "68px", flexShrink: 0 }}>
+                <div style={{ position: "relative", width: isLyricsOpen ? "76px" : "68px", height: isLyricsOpen ? "76px" : "68px", flexShrink: 0, transition: "all 350ms ease" }}>
                   <div
                     style={{
                       position: "absolute",
                       left: "4px",
                       top: "10px",
-                      width: "60px",
-                      height: "60px",
+                      width: isLyricsOpen ? "68px" : "60px",
+                      height: isLyricsOpen ? "68px" : "60px",
                       borderRadius: "18px",
                       background: accentHex,
                       filter: "blur(16px)",
@@ -331,21 +384,21 @@ export const ExpandedCard: React.FC<ExpandedCardProps> = ({
                   <div
                     style={{
                       position: "relative",
-                      width: "68px",
-                      height: "68px",
-                      borderRadius: "16px",
+                      width: isLyricsOpen ? "76px" : "68px",
+                      height: isLyricsOpen ? "76px" : "68px",
+                      borderRadius: "18px",
                       background: "linear-gradient(145deg, #7E9BFF 0%, #4A3FD0 55%, #1B1457 100%)",
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
-                      boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.18)",
+                      boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.18), 0 10px 26px rgba(0,0,0,0.45)",
                       overflow: "hidden",
                     }}
                   >
                     {media?.thumbnail ? (
                       <img src={media.thumbnail} alt="cover" className="w-full h-full object-cover" />
                     ) : (
-                      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#ffffff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#ffffff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                         <path d="M9 18V6l11-2v12" />
                         <circle cx="6.5" cy="18" r="2.5" />
                         <circle cx="17.5" cy="16" r="2.5" />
@@ -355,62 +408,66 @@ export const ExpandedCard: React.FC<ExpandedCardProps> = ({
                 </div>
 
                 <div style={{ display: "flex", flexDirection: "column", gap: "3px", minWidth: 0, flex: 1 }}>
-                  <div style={{ fontSize: "18px", fontWeight: 700, lineHeight: 1.2, color: "#ffffff", letterSpacing: "-0.015em", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  <div style={{ fontSize: isLyricsOpen ? "17px" : "18px", fontWeight: 700, lineHeight: 1.2, color: "#ffffff", letterSpacing: "-0.01em", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                     {displayTitle}
                   </div>
-                  <div style={{ fontSize: "13px", fontWeight: 500, color: "#a1a1aa", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  <div style={{ fontSize: "13px", fontWeight: 500, color: isLyricsOpen ? "#c4c4cc" : "#a1a1aa", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                     {displayArtist}
                   </div>
                 </div>
               </div>
 
-              {/* Scrubber */}
+              {/* Scrubber (Stacked layout when lyrics is open) */}
               <LinearScrubber
                 positionSec={media ? media.positionSec : 0}
                 durationSec={media ? media.durationSec : 0}
+                stacked={isLyricsOpen}
               />
 
-              {/* Bottom Controls Row (Height 44px) */}
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "row",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  height: "44px",
-                }}
-              >
-                {/* Lyrics Button */}
-                <div style={{ flex: isLyricsOpen ? 0 : 1, display: "flex", alignItems: "center" }}>
+              {/* Bottom Controls Row */}
+              {isLyricsOpen ? (
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    height: "50px",
+                    width: "100%",
+                    boxSizing: "border-box",
+                    padding: "0 2px",
+                  }}
+                >
+                  {/* 1. Lyrics Toggle Button */}
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
                       onToggleLyrics();
                     }}
-                    aria-label={isLyricsOpen ? "Tutup lirik" : "Tampilkan lirik"}
+                    aria-label="Tutup lirik"
+                    aria-pressed="true"
                     style={{
-                      width: "36px",
-                      height: "36px",
+                      width: "38px",
+                      height: "38px",
+                      flexShrink: 0,
                       borderRadius: "50%",
-                      border: isLyricsOpen ? "1px solid #5AA2FF" : "none",
-                      background: isLyricsOpen ? "rgba(90,162,255,0.16)" : "rgba(255,255,255,0.07)",
+                      border: `1px solid ${accentHex}`,
+                      background: "rgba(90,162,255,0.16)",
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
                       padding: 0,
                       cursor: "pointer",
-                      color: isLyricsOpen ? "#5AA2FF" : "#ffffff",
+                      color: accentHex,
                       transition: "all 250ms ease",
                     }}
                     className="hover:bg-white/15 active:scale-95"
-                    title={isLyricsOpen ? "Tutup Lirik" : "Buka Lirik"}
+                    title="Tutup Lirik"
                   >
-                    <AppleLyricsIcon size={17} />
+                    <AppleLyricsIcon size={18} />
                   </button>
-                </div>
 
-                {/* Playback Controls (Prev, Play/Pause, Next) */}
-                <div style={{ display: "flex", alignItems: "center", gap: isLyricsOpen ? "10px" : "14px" }}>
+                  {/* 2. Previous Track Button */}
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
@@ -418,8 +475,9 @@ export const ExpandedCard: React.FC<ExpandedCardProps> = ({
                     }}
                     aria-label="Mundur"
                     style={{
-                      width: "38px",
-                      height: "38px",
+                      width: "40px",
+                      height: "40px",
+                      flexShrink: 0,
                       borderRadius: "50%",
                       border: "none",
                       background: "transparent",
@@ -437,6 +495,7 @@ export const ExpandedCard: React.FC<ExpandedCardProps> = ({
                     </svg>
                   </button>
 
+                  {/* 3. Play / Pause Button with White Ring Shadow */}
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
@@ -444,8 +503,9 @@ export const ExpandedCard: React.FC<ExpandedCardProps> = ({
                     }}
                     aria-label={media?.isPlaying ? "Jeda" : "Putar"}
                     style={{
-                      width: "44px",
-                      height: "44px",
+                      width: "46px",
+                      height: "46px",
+                      flexShrink: 0,
                       borderRadius: "50%",
                       border: "none",
                       background: "#ffffff",
@@ -453,24 +513,25 @@ export const ExpandedCard: React.FC<ExpandedCardProps> = ({
                       alignItems: "center",
                       justifyContent: "center",
                       padding: 0,
-                      boxShadow: "0 0 0 4px rgba(255,255,255,0.08), 0 6px 18px rgba(90,162,255,0.25)",
+                      boxShadow: "0 0 0 5px rgba(255,255,255,0.1)",
                       cursor: "pointer",
                     }}
                     className="active:scale-95 transition"
                     title={media?.isPlaying ? "Pause" : "Play"}
                   >
                     {media?.isPlaying ? (
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="#09090b" aria-hidden="true">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="#09090b" aria-hidden="true">
                         <rect x="6" y="5" width="4" height="14" rx="1.2" />
                         <rect x="14" y="5" width="4" height="14" rx="1.2" />
                       </svg>
                     ) : (
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="#09090b" aria-hidden="true" style={{ marginLeft: "2px" }}>
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="#09090b" aria-hidden="true">
                         <path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z" />
                       </svg>
                     )}
                   </button>
 
+                  {/* 4. Next Track Button */}
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
@@ -478,8 +539,9 @@ export const ExpandedCard: React.FC<ExpandedCardProps> = ({
                     }}
                     aria-label="Maju"
                     style={{
-                      width: "38px",
-                      height: "38px",
+                      width: "40px",
+                      height: "40px",
+                      flexShrink: 0,
                       borderRadius: "50%",
                       border: "none",
                       background: "transparent",
@@ -497,31 +559,162 @@ export const ExpandedCard: React.FC<ExpandedCardProps> = ({
                     </svg>
                   </button>
                 </div>
+              ) : (
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    height: "44px",
+                  }}
+                >
+                  {/* Lyrics Button */}
+                  <div style={{ flex: 1, display: "flex", alignItems: "center" }}>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onToggleLyrics();
+                      }}
+                      aria-label="Tampilkan lirik"
+                      style={{
+                        width: "36px",
+                        height: "36px",
+                        borderRadius: "50%",
+                        border: "none",
+                        background: "rgba(255,255,255,0.07)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        padding: 0,
+                        cursor: "pointer",
+                        color: "#ffffff",
+                        transition: "all 250ms ease",
+                      }}
+                      className="hover:bg-white/15 active:scale-95"
+                      title="Buka Lirik"
+                    >
+                      <AppleLyricsIcon size={17} />
+                    </button>
+                  </div>
 
-                {/* Right spacer for balance */}
-                <div style={{ flex: isLyricsOpen ? 0 : 1 }} />
-              </div>
+                  {/* Playback Controls (Prev, Play/Pause, Next) */}
+                  <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onPrev();
+                      }}
+                      aria-label="Mundur"
+                      style={{
+                        width: "38px",
+                        height: "38px",
+                        borderRadius: "50%",
+                        border: "none",
+                        background: "transparent",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        padding: 0,
+                        cursor: "pointer",
+                      }}
+                      className="hover:text-white text-white/80 active:scale-90 transition"
+                      title="Previous Track"
+                    >
+                      <svg width="22" height="22" viewBox="0 0 24 24" fill="#ffffff" aria-hidden="true">
+                        <path d="M11 6v12L3 12zM21 6v12l-8-6z" />
+                      </svg>
+                    </button>
+
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onPlayPause();
+                      }}
+                      aria-label={media?.isPlaying ? "Jeda" : "Putar"}
+                      style={{
+                        width: "44px",
+                        height: "44px",
+                        borderRadius: "50%",
+                        border: "none",
+                        background: "#ffffff",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        padding: 0,
+                        boxShadow: "0 0 0 4px rgba(255,255,255,0.08), 0 6px 18px rgba(90,162,255,0.25)",
+                        cursor: "pointer",
+                      }}
+                      className="active:scale-95 transition"
+                      title={media?.isPlaying ? "Pause" : "Play"}
+                    >
+                      {media?.isPlaying ? (
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="#09090b" aria-hidden="true">
+                          <rect x="6" y="5" width="4" height="14" rx="1.2" />
+                          <rect x="14" y="5" width="4" height="14" rx="1.2" />
+                        </svg>
+                      ) : (
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="#09090b" aria-hidden="true">
+                          <path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z" />
+                        </svg>
+                      )}
+                    </button>
+
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onNext();
+                      }}
+                      aria-label="Maju"
+                      style={{
+                        width: "38px",
+                        height: "38px",
+                        borderRadius: "50%",
+                        border: "none",
+                        background: "transparent",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        padding: 0,
+                        cursor: "pointer",
+                      }}
+                      className="hover:text-white text-white/80 active:scale-90 transition"
+                      title="Next Track"
+                    >
+                      <svg width="22" height="22" viewBox="0 0 24 24" fill="#ffffff" aria-hidden="true">
+                        <path d="M13 6v12l8-6zM3 6v12l8-6z" />
+                      </svg>
+                    </button>
+                  </div>
+
+                  {/* Right spacer for balance */}
+                  <div style={{ flex: 1 }} />
+                </div>
+              )}
             </div>
 
-            {/* ─── LYRICS PANEL (Smoothly Slides in from Right & Fades in) ─── */}
+            {/* ─── LYRICS PANEL (60% Grid) ─── */}
             <div
               style={{
                 position: "relative",
-                flex: isLyricsOpen ? 1 : "0 0 0px",
-                maxWidth: isLyricsOpen ? "300px" : "0px",
+                flex: isLyricsOpen ? "6 6 0px" : "0 0 0px",
+                width: isLyricsOpen ? "60%" : "0px",
+                maxWidth: isLyricsOpen ? "60%" : "0px",
                 opacity: isLyricsOpen ? 1 : 0,
                 transform: isLyricsOpen ? "translateX(0px)" : "translateX(35px)",
                 pointerEvents: isLyricsOpen ? "auto" : "none",
                 minWidth: 0,
-                marginLeft: isLyricsOpen ? "20px" : "0px",
-                paddingLeft: isLyricsOpen ? "20px" : "0px",
+                marginLeft: isLyricsOpen ? "24px" : "0px",
+                paddingLeft: isLyricsOpen ? "24px" : "0px",
                 borderLeft: isLyricsOpen ? "1px solid rgba(255,255,255,0.12)" : "1px solid transparent",
                 display: "flex",
                 flexDirection: "column",
                 justifyContent: "center",
-                gap: "10px",
+                gap: "14px",
                 overflow: "hidden",
-                transition: "flex 350ms cubic-bezier(0.16, 1, 0.3, 1), max-width 350ms cubic-bezier(0.16, 1, 0.3, 1), opacity 320ms cubic-bezier(0.16, 1, 0.3, 1), transform 350ms cubic-bezier(0.16, 1, 0.3, 1), margin-left 350ms cubic-bezier(0.16, 1, 0.3, 1), padding-left 350ms cubic-bezier(0.16, 1, 0.3, 1), border-left-color 300ms ease",
+                WebkitMaskImage: "linear-gradient(to bottom, #000 62%, transparent 100%)",
+                maskImage: "linear-gradient(to bottom, #000 62%, transparent 100%)",
+                transition: "flex 350ms cubic-bezier(0.16, 1, 0.3, 1), max-width 350ms cubic-bezier(0.16, 1, 0.3, 1), width 350ms cubic-bezier(0.16, 1, 0.3, 1), opacity 320ms cubic-bezier(0.16, 1, 0.3, 1), transform 350ms cubic-bezier(0.16, 1, 0.3, 1), margin-left 350ms cubic-bezier(0.16, 1, 0.3, 1), padding-left 350ms cubic-bezier(0.16, 1, 0.3, 1), border-left-color 300ms ease",
               }}
             >
               {isLoading ? (
@@ -531,25 +724,25 @@ export const ExpandedCard: React.FC<ExpandedCardProps> = ({
                 </div>
               ) : lyrics.length > 0 ? (
                 <>
-                  <div style={{ fontSize: "18px", fontWeight: 700, lineHeight: 1.25, letterSpacing: "-0.015em", color: "#ffffff", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  <div style={{ fontSize: "21px", fontWeight: 700, lineHeight: 1.25, letterSpacing: "-0.015em", color: "#ffffff", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                     {currentLine || "♪ Musik Berjalan ♪"}
                   </div>
-                  <div style={{ fontSize: "14px", fontWeight: 600, lineHeight: 1.3, color: "rgba(255,255,255,0.55)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  <div style={{ fontSize: "16px", fontWeight: 600, lineHeight: 1.3, color: "rgba(255,255,255,0.55)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                     {nextLine1 || "• • •"}
                   </div>
-                  <div style={{ fontSize: "14px", fontWeight: 600, lineHeight: 1.3, color: "rgba(255,255,255,0.4)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  <div style={{ fontSize: "16px", fontWeight: 600, lineHeight: 1.3, color: "rgba(255,255,255,0.4)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                     {nextLine2 || "• • •"}
                   </div>
                 </>
               ) : plainLines.length > 0 ? (
                 <>
-                  <div style={{ fontSize: "18px", fontWeight: 700, lineHeight: 1.25, color: "#ffffff", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  <div style={{ fontSize: "21px", fontWeight: 700, lineHeight: 1.25, color: "#ffffff", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                     {plainLines[plainIndex] || "♪ Musik Berjalan ♪"}
                   </div>
-                  <div style={{ fontSize: "14px", fontWeight: 600, lineHeight: 1.3, color: "rgba(255,255,255,0.55)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  <div style={{ fontSize: "16px", fontWeight: 600, lineHeight: 1.3, color: "rgba(255,255,255,0.55)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                     {plainLines[plainIndex + 1] || "• • •"}
                   </div>
-                  <div style={{ fontSize: "14px", fontWeight: 600, lineHeight: 1.3, color: "rgba(255,255,255,0.4)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  <div style={{ fontSize: "16px", fontWeight: 600, lineHeight: 1.3, color: "rgba(255,255,255,0.4)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                     {plainLines[plainIndex + 2] || "• • •"}
                   </div>
                 </>
@@ -572,10 +765,7 @@ export const ExpandedCard: React.FC<ExpandedCardProps> = ({
           <div style={{ display: "flex", flexDirection: "row", alignItems: "center", height: "18px" }}>
             <div style={{ flex: 1 }} />
             <div style={{ display: "inline-flex", alignItems: "center", gap: "8px" }}>
-              <svg width="18" height="18" viewBox="0 0 22 22" fill="none" aria-hidden="true">
-                <circle cx="11" cy="11" r={batteryRadius} stroke="rgba(255,255,255,0.14)" strokeWidth="2.6" />
-                <circle cx="11" cy="11" r={batteryRadius} stroke="#5AA2FF" strokeWidth="2.6" strokeLinecap="round" strokeDasharray={`${batteryOffset} ${batteryCircumference.toFixed(1)}`} transform="rotate(-90 11 11)" />
-              </svg>
+              <HeaderBatteryDonut battery={battery} />
               <span style={{ fontSize: "13px", fontWeight: 500, color: "#a1a1aa" }}>{dateStr}</span>
               <span style={{ fontSize: "13px", fontWeight: 700, color: "#ffffff", fontVariantNumeric: "tabular-nums" }}>{timeStr}</span>
             </div>
@@ -742,10 +932,7 @@ export const ExpandedCard: React.FC<ExpandedCardProps> = ({
           <div style={{ display: "flex", flexDirection: "row", alignItems: "center", height: "18px" }}>
             <div style={{ flex: 1 }} />
             <div style={{ display: "inline-flex", alignItems: "center", gap: "8px" }}>
-              <svg width="18" height="18" viewBox="0 0 22 22" fill="none" aria-hidden="true">
-                <circle cx="11" cy="11" r={batteryRadius} stroke="rgba(255,255,255,0.14)" strokeWidth="2.6" />
-                <circle cx="11" cy="11" r={batteryRadius} stroke="#5AA2FF" strokeWidth="2.6" strokeLinecap="round" strokeDasharray={`${batteryOffset} ${batteryCircumference.toFixed(1)}`} transform="rotate(-90 11 11)" />
-              </svg>
+              <HeaderBatteryDonut battery={battery} />
               <span style={{ fontSize: "13px", fontWeight: 500, color: "#a1a1aa" }}>{dateStr}</span>
               <span style={{ fontSize: "13px", fontWeight: 700, color: "#ffffff", fontVariantNumeric: "tabular-nums" }}>{timeStr}</span>
             </div>
@@ -942,13 +1129,33 @@ export const ExpandedCard: React.FC<ExpandedCardProps> = ({
                 {dateStr}
               </div>
             </div>
-            <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", padding: "4px 10px", borderRadius: "999px", background: "rgba(255,255,255,0.07)", color: "#ffffff", fontSize: "12px", fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>
-              <svg width="18" height="10" viewBox="0 0 20 12" fill="none" aria-hidden="true">
-                <rect x="0.5" y="0.5" width="16" height="11" rx="3" stroke="#a1a1aa" />
-                <rect x="2" y="2" width={`${Math.min(10.5, (battery.level / 100) * 10.5)}`} height="8" rx="1.8" fill="#5AA2FF" />
-                <rect x="17.5" y="4" width="2" height="4" rx="1" fill="#a1a1aa" />
-              </svg>
-              <span>{battery.level}%</span>
+            <div
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "6px",
+                padding: "4px 10px",
+                borderRadius: "999px",
+                background: battery.isCharging ? "rgba(48,209,88,0.15)" : "rgba(255,255,255,0.07)",
+                border: battery.isCharging ? "1px solid rgba(48,209,88,0.3)" : "none",
+                color: "#ffffff",
+                fontSize: "12px",
+                fontWeight: 600,
+                fontVariantNumeric: "tabular-nums",
+              }}
+            >
+              {battery.isCharging ? (
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="#30D158" aria-hidden="true" className="animate-pulse">
+                  <path d="M13.5 2.5L5.5 13.2a.6.6 0 0 0 .5.95H10.5l-1 7.35a.4.4 0 0 0 .72.28l8.1-10.9a.6.6 0 0 0-.48-.96H13.3l.9-7.1a.4.4 0 0 0-.7-.32z" />
+                </svg>
+              ) : (
+                <svg width="18" height="10" viewBox="0 0 20 12" fill="none" aria-hidden="true">
+                  <rect x="0.5" y="0.5" width="16" height="11" rx="3" stroke="#a1a1aa" />
+                  <rect x="2" y="2" width={`${Math.min(10.5, (battery.level / 100) * 10.5)}`} height="8" rx="1.8" fill="#5AA2FF" />
+                  <rect x="17.5" y="4" width="2" height="4" rx="1" fill="#a1a1aa" />
+                </svg>
+              )}
+              <span className={battery.isCharging ? "text-[#30D158]" : ""}>{battery.level}%</span>
             </div>
           </div>
 

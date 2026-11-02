@@ -32,6 +32,22 @@ export function useBluetooth() {
 
     listen<BluetoothDeviceEvent>("bluetooth-connected", (event) => {
       if (event.payload && event.payload.name) {
+        const lower = event.payload.name.toLowerCase().trim();
+        const isGeneric =
+          lower === "headset" ||
+          lower === "headphones" ||
+          lower === "headphone" ||
+          lower === "earphone" ||
+          lower === "audio" ||
+          lower === "bluetooth" ||
+          lower.startsWith("hands-free") ||
+          lower.includes("hands-free");
+
+        // Discard generic names so "Headset" never overwrites the actual device name
+        if (isGeneric) {
+          return;
+        }
+
         showBanner(event.payload);
       }
     })

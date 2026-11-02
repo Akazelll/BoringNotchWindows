@@ -18,6 +18,8 @@ import {
   NOTIFICATION_BANNER_HEIGHT,
   BLUETOOTH_BANNER_WIDTH,
   BLUETOOTH_BANNER_HEIGHT,
+  CHARGING_BANNER_WIDTH,
+  CHARGING_BANNER_HEIGHT,
   EXPANDED_WIDTH,
   EXPANDED_HEIGHT,
   EXPANDED_LYRICS_WIDTH,
@@ -26,6 +28,9 @@ import {
   CALL_EXPANDED_HEIGHT,
 } from "./hooks/useWindowResize";
 import { CompactPill } from "./components/CompactPill";
+import { ChargingCompactPill, type ChargingBannerMode } from "./components/ChargingCompactPill";
+import { BluetoothCompactPill } from "./components/BluetoothCompactPill";
+import { NotificationCompactPill } from "./components/NotificationCompactPill";
 import { ExpandedCard } from "./components/ExpandedCard";
 import { CallCompactPill } from "./components/CallCompactPill";
 import { CallExpandedCard } from "./components/CallExpandedCard";
@@ -61,6 +66,51 @@ export default function App() {
   const pomodoro = usePomodoro();
   const lyricsData = useLyrics(media); // Background pre-fetching as soon as music plays
 
+  const [chargingBannerMode, setChargingBannerMode] = useState<ChargingBannerMode | null>(null);
+  const prevIsChargingRef = useRef<boolean>(battery.isCharging);
+  const chargingTimerRef = useRef<number | null>(null);
+  const isInitialMountRef = useRef<boolean>(true);
+
+  // Trigger 400x78px Charging Banner when charger is connected OR disconnected
+  useEffect(() => {
+    // Avoid triggering disconnected alert on initial launch
+    if (isInitialMountRef.current) {
+      isInitialMountRef.current = false;
+      prevIsChargingRef.current = battery.isCharging;
+      return;
+    }
+
+    if (!prevIsChargingRef.current && battery.isCharging) {
+      // Charger connected
+      if (chargingTimerRef.current) clearTimeout(chargingTimerRef.current);
+      setChargingBannerMode("connected");
+      chargingTimerRef.current = window.setTimeout(() => {
+        setChargingBannerMode(null);
+        chargingTimerRef.current = null;
+      }, 4500); // 4.5 seconds per reference
+    } else if (prevIsChargingRef.current && !battery.isCharging) {
+      // Charger disconnected
+      if (chargingTimerRef.current) clearTimeout(chargingTimerRef.current);
+      setChargingBannerMode("disconnected");
+      chargingTimerRef.current = window.setTimeout(() => {
+        setChargingBannerMode(null);
+        chargingTimerRef.current = null;
+      }, 4000); // 4.0 seconds per reference
+    }
+
+    prevIsChargingRef.current = battery.isCharging;
+  }, [battery.isCharging]);
+
+  const dismissCharging = () => {
+    if (chargingTimerRef.current) {
+      clearTimeout(chargingTimerRef.current);
+      chargingTimerRef.current = null;
+    }
+    setChargingBannerMode(null);
+  };
+
+  const isChargingBannerActive = chargingBannerMode !== null;
+
   // Fetch logged in Windows username
   useEffect(() => {
     invoke<string>("get_windows_username")
@@ -93,33 +143,37 @@ export default function App() {
     if (isCallActive) {
       currentWidth = CALL_EXPANDED_WIDTH;
       currentHeight = CALL_EXPANDED_HEIGHT;
-      notchRadiusClass = "rounded-b-[36px]";
+      notchRadiusClass = "rounded-b-[18px]";
     } else if (isLyricsOpen) {
       currentWidth = EXPANDED_LYRICS_WIDTH;
       currentHeight = EXPANDED_LYRICS_HEIGHT;
-      notchRadiusClass = "rounded-b-[36px]";
+      notchRadiusClass = "rounded-b-[18px]";
     } else {
       currentWidth = EXPANDED_WIDTH;
       currentHeight = EXPANDED_HEIGHT;
-      notchRadiusClass = "rounded-b-[36px]";
+      notchRadiusClass = "rounded-b-[18px]";
     }
   } else {
-    if (isBluetoothBannerActive) {
+    if (isChargingBannerActive) {
+      currentWidth = CHARGING_BANNER_WIDTH;
+      currentHeight = CHARGING_BANNER_HEIGHT;
+      notchRadiusClass = "rounded-b-[38px]";
+    } else if (isBluetoothBannerActive) {
       currentWidth = BLUETOOTH_BANNER_WIDTH;
       currentHeight = BLUETOOTH_BANNER_HEIGHT;
-      notchRadiusClass = "rounded-b-[24px]";
+      notchRadiusClass = "rounded-b-[38px]";
     } else if (isNotificationActive) {
       currentWidth = NOTIFICATION_BANNER_WIDTH;
       currentHeight = NOTIFICATION_BANNER_HEIGHT;
-      notchRadiusClass = "rounded-b-[24px]";
+      notchRadiusClass = "rounded-b-[18px]";
     } else if (isMediaPlaying) {
       currentWidth = COMPACT_MEDIA_WIDTH;
       currentHeight = COMPACT_HEIGHT;
-      notchRadiusClass = "rounded-b-[24px]";
+      notchRadiusClass = "rounded-b-[14px]";
     } else {
       currentWidth = COMPACT_IDLE_WIDTH;
       currentHeight = COMPACT_HEIGHT;
-      notchRadiusClass = "rounded-b-[24px]";
+      notchRadiusClass = "rounded-b-[14px]";
     }
   }
 
@@ -130,7 +184,8 @@ export default function App() {
     isMediaPlaying,
     isBluetoothBannerActive,
     isNotificationActive,
-    isCallActive
+    isCallActive,
+    isChargingBannerActive
   );
 
   const handleMouseEnter = () => {
@@ -175,7 +230,16 @@ export default function App() {
     <div className="w-screen h-screen flex justify-center items-start overflow-hidden bg-transparent p-0 m-0">
       {/* Outer wrapper to anchor the top inverted fillet ears */}
       <div className="relative flex justify-center items-start">
-        <NotchTopEars radius={isExpanded ? 16 : 12} isExpanded={isExpanded} />
+        <NotchTopEars
+          radius={
+            isExpanded
+              ? 16
+              : (isChargingBannerActive || isBluetoothBannerActive || isNotificationActive)
+              ? 16
+              : 12
+          }
+          isExpanded={isExpanded}
+        />
         <div
           onMouseEnter={handleMouseEnter}
           onMouseLeave={handleMouseLeave}
@@ -183,6 +247,24 @@ export default function App() {
           style={{
             width: `${currentWidth}px`,
             height: `${currentHeight}px`,
+            boxShadow:
+              chargingBannerMode === "connected"
+                ? "0 18px 40px rgba(0,0,0,0.5), 0 0 60px rgba(48,209,88,0.12)"
+                : chargingBannerMode === "disconnected"
+                ? "0 18px 40px rgba(0,0,0,0.5), 0 0 60px rgba(255,255,255,0.05)"
+                : isBluetoothBannerActive
+                ? "0 18px 40px rgba(0,0,0,0.5), 0 0 60px rgba(90,162,255,0.12)"
+                : isNotificationActive && currentToast
+                ? currentToast.appType === "whatsapp"
+                  ? "0 18px 40px rgba(0,0,0,0.5), 0 0 50px rgba(74,222,128,0.12)"
+                  : currentToast.appType === "telegram"
+                  ? "0 18px 40px rgba(0,0,0,0.5), 0 0 50px rgba(42,171,238,0.12)"
+                  : currentToast.appType === "discord"
+                  ? "0 18px 40px rgba(0,0,0,0.5), 0 0 50px rgba(88,101,242,0.12)"
+                  : currentToast.appType === "spotify"
+                  ? "0 18px 40px rgba(0,0,0,0.5), 0 0 50px rgba(30,215,96,0.12)"
+                  : "0 18px 40px rgba(0,0,0,0.5), 0 0 50px rgba(255,255,255,0.06)"
+                : undefined,
           }}
           className={`
             notch-solid box-border relative flex items-center justify-center transition-all ${
@@ -226,6 +308,22 @@ export default function App() {
               onAccept={acceptCall}
               onDecline={declineCall}
               onEnd={endCall}
+            />
+          ) : isChargingBannerActive && chargingBannerMode ? (
+            <ChargingCompactPill
+              battery={battery}
+              mode={chargingBannerMode}
+              onDismiss={dismissCharging}
+            />
+          ) : isBluetoothBannerActive && bluetoothEvent ? (
+            <BluetoothCompactPill
+              event={bluetoothEvent}
+              onDismiss={dismissBluetooth}
+            />
+          ) : isNotificationActive && currentToast ? (
+            <NotificationCompactPill
+              notification={currentToast}
+              onDismiss={dismissToast}
             />
           ) : (
             <CompactPill

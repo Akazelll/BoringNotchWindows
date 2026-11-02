@@ -1,6 +1,5 @@
-import React from "react";
+import React, { useState } from "react";
 import { CallInfo } from "../types";
-import { Mic, MicOff, PhoneOff } from "lucide-react";
 
 interface CallExpandedCardProps {
   call: CallInfo;
@@ -37,296 +36,310 @@ function getAppHeader(appSource: string): string {
 
 export const CallExpandedCard: React.FC<CallExpandedCardProps> = ({
   call,
-  username = "User",
+  username: _username = "User",
   onAccept,
   onDecline,
   onEnd,
   onToggleMute,
 }) => {
+  const [isSpeakerOn, setIsSpeakerOn] = useState<boolean>(false);
   const isIncoming = call.state === "incoming";
-  const isActive = call.state === "active";
-
   const initials = getInitials(call.callerName);
   const appHeader = getAppHeader(call.appSource);
-  const callerDetail = call.callerNumber
-    ? (call.callerNumber.startsWith("+") || call.callerNumber.startsWith("08")
-        ? `Seluler · ${call.callerNumber}`
-        : call.callerNumber)
-    : "Seluler · +62 812-3456-7890";
 
-  // ═══ 1. INCOMING CALL (460x225px) ═══
-  if (isIncoming) {
-    return (
-      <div
-        style={{
-          width: "100%",
-          height: "100%",
-          boxSizing: "border-box",
-          padding: "18px 24px 14px 24px",
-          background: "#09090b",
-          display: "flex",
-          flexDirection: "column",
-          justifyContent: "space-between",
-          fontFamily: "'Inter', -apple-system, 'SF Pro Display', system-ui, sans-serif",
-        }}
-        className="animate-in fade-in duration-200 select-none"
-      >
-        {/* Top Info Row: Caller Avatar + Text Info + Soundwave */}
-        <div style={{ display: "flex", flexDirection: "row", alignItems: "center", gap: "14px" }}>
-          {/* Avatar with Ring & Telephone Badge */}
-          <div style={{ position: "relative", width: "56px", height: "56px", flexShrink: 0 }}>
-            <div
-              style={{
-                position: "relative",
-                width: "56px",
-                height: "56px",
-                borderRadius: "50%",
-                background: "linear-gradient(145deg, #3a3f4b 0%, #1d2028 100%)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.14)",
-              }}
-            >
-              <span style={{ fontSize: "20px", fontWeight: 600, color: "#e4e4e7", letterSpacing: "-0.01em" }}>
-                {initials}
-              </span>
-            </div>
-            <div
-              style={{
-                position: "absolute",
-                right: "-2px",
-                bottom: "-2px",
-                width: "22px",
-                height: "22px",
-                borderRadius: "50%",
-                background: "#30D158",
-                border: "2px solid #09090b",
-                boxSizing: "border-box",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="#04210d" aria-hidden="true">
-                <path d="M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.25 11.4 11.4 0 0 0 3.6.57 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.45.57 3.57a1 1 0 0 1-.25 1z" />
-              </svg>
-            </div>
+  return (
+    <div
+      style={{
+        width: "100%",
+        height: "100%",
+        boxSizing: "border-box",
+        padding: "24px 28px 24px 28px",
+        background: "#09090b",
+        display: "flex",
+        flexDirection: "column",
+        justifyContent: "space-between",
+        fontFamily: "'Inter', -apple-system, 'SF Pro Display', system-ui, sans-serif",
+      }}
+      className="animate-in fade-in duration-200 select-none"
+    >
+      {/* ─── 1. TOP ROW: AVATAR + CALLER DETAIL + STATUS PILL ─── */}
+      <div style={{ display: "flex", flexDirection: "row", alignItems: "center", gap: "14px" }}>
+        {/* Avatar 48x48px with Initials */}
+        <div
+          style={{
+            width: "48px",
+            height: "48px",
+            flexShrink: 0,
+            borderRadius: "50%",
+            background: "linear-gradient(145deg, #3a3f4b 0%, #1d2028 100%)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: "17px",
+            fontWeight: 600,
+            color: "#e4e4e7",
+            boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.14)",
+          }}
+          aria-hidden="true"
+        >
+          {initials}
+        </div>
+
+        {/* Caller Name & Subtitle */}
+        <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: "2px" }}>
+          <div
+            style={{
+              fontSize: "18px",
+              fontWeight: 700,
+              lineHeight: 1.2,
+              color: "#ffffff",
+              letterSpacing: "-0.015em",
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+            }}
+          >
+            {call.callerName || "Andi Pratama"}
           </div>
-
-          {/* Caller Text Detail */}
-          <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: "2px" }}>
-            <div style={{ fontSize: "11px", fontWeight: 600, letterSpacing: "0.04em", textTransform: "uppercase", color: "#30D158" }}>
-              {appHeader}
-            </div>
-            <div style={{ fontSize: "20px", fontWeight: 700, lineHeight: 1.15, color: "#ffffff", letterSpacing: "-0.02em", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-              {call.callerName || "Andi Pratama"}
-            </div>
-            <div style={{ fontSize: "13px", fontWeight: 500, color: "#a1a1aa" }}>
-              {callerDetail}
-            </div>
-          </div>
-
-          {/* Green Soundwave Equalizer */}
-          <div style={{ display: "flex", alignItems: "center", gap: "3px", height: "28px", flexShrink: 0 }} aria-hidden="true">
-            <div style={{ width: "3.5px", borderRadius: "2px", background: "#30D158", height: "12px" }} className="animate-sound-bar-1" />
-            <div style={{ width: "3.5px", borderRadius: "2px", background: "#30D158", height: "22px" }} className="animate-sound-bar-2" />
-            <div style={{ width: "3.5px", borderRadius: "2px", background: "#30D158", height: "15px" }} className="animate-sound-bar-3" />
-            <div style={{ width: "3.5px", borderRadius: "2px", background: "#30D158", height: "20px" }} className="animate-sound-bar-4" />
-            <div style={{ width: "3.5px", borderRadius: "2px", background: "#30D158", height: "10px" }} className="animate-sound-bar-1" />
+          <div
+            style={{
+              fontSize: "12px",
+              fontWeight: 600,
+              letterSpacing: "0.04em",
+              textTransform: "uppercase",
+              color: "#30D158",
+            }}
+          >
+            {appHeader}
           </div>
         </div>
 
-        {/* Action Buttons: Tolak & Terima Pills (46px height) */}
-        <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-          <div style={{ display: "flex", flexDirection: "row", gap: "12px" }}>
-            {/* Tolak Button */}
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onDecline();
-              }}
-              style={{
-                flex: 1,
-                height: "46px",
-                borderRadius: "999px",
-                border: "none",
-                background: "#FF453A",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: "8px",
-                padding: 0,
-                color: "#ffffff",
-                fontSize: "15px",
-                fontWeight: 600,
-                letterSpacing: "-0.01em",
-                boxShadow: "0 6px 18px rgba(255,69,58,0.25)",
-                cursor: "pointer",
-              }}
-              className="active:scale-95 transition-all duration-150"
-              aria-label="Tolak panggilan"
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="#ffffff" aria-hidden="true" style={{ transform: "rotate(135deg)" }}>
-                <path d="M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.25 11.4 11.4 0 0 0 3.6.57 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.45.57 3.57a1 1 0 0 1-.25 1z" />
-              </svg>
-              Tolak
-            </button>
-
-            {/* Terima Button */}
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onAccept();
-              }}
-              style={{
-                flex: 1,
-                height: "46px",
-                borderRadius: "999px",
-                border: "none",
-                background: "#30D158",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: "8px",
-                padding: 0,
-                color: "#04210d",
-                fontSize: "15px",
-                fontWeight: 600,
-                letterSpacing: "-0.01em",
-                boxShadow: "0 6px 18px rgba(48,209,88,0.25)",
-                cursor: "pointer",
-              }}
-              className="active:scale-95 transition-all duration-150"
-              aria-label="Terima panggilan"
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="#04210d" aria-hidden="true">
-                <path d="M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.25 11.4 11.4 0 0 0 3.6.57 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.45.57 3.57a1 1 0 0 1-.25 1z" />
-              </svg>
-              Terima
-            </button>
-          </div>
-
-          {/* Footer Hint */}
-          <div style={{ textAlign: "center", fontSize: "11px", fontWeight: 500, color: "#8a8a93" }}>
-            Klik untuk merespons
-          </div>
+        {/* Status Pill: Terhubung (Active) or Memanggil (Incoming) */}
+        <div
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "7px",
+            height: "30px",
+            boxSizing: "border-box",
+            padding: "0 13px 0 11px",
+            borderRadius: "999px",
+            background: "rgba(48,209,88,0.16)",
+            fontSize: "13px",
+            fontWeight: 600,
+            color: "#30D158",
+            flexShrink: 0,
+          }}
+        >
+          <div
+            style={{
+              width: "7px",
+              height: "7px",
+              borderRadius: "50%",
+              background: "#30D158",
+            }}
+            className="animate-pulse"
+            aria-hidden="true"
+          />
+          <span>{isIncoming ? "Memanggil..." : "Terhubung"}</span>
         </div>
       </div>
-    );
-  }
 
-  // ═══ 2. ACTIVE CALL (Ongoing Call UI) ═══
-  if (isActive) {
-    return (
+      {/* ─── 2. CENTER SECTION: GIANT 60PX DURATION DISPLAY + SUBTEXT ─── */}
       <div
         style={{
-          width: "100%",
-          height: "100%",
-          boxSizing: "border-box",
-          padding: "20px 24px 16px 24px",
-          background: "#09090b",
           display: "flex",
           flexDirection: "column",
-          justifyContent: "space-between",
-          fontFamily: "'Inter', -apple-system, 'SF Pro Display', system-ui, sans-serif",
+          alignItems: "center",
+          gap: "4px",
+          padding: "14px 0 12px 0",
+          borderTop: "1px solid rgba(255,255,255,0.08)",
         }}
-        className="animate-in fade-in duration-200 select-none"
       >
-        {/* Header Row: Caller Avatar, Name, App Source */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingBottom: "10px", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-            <div style={{ width: "40px", height: "40px", borderRadius: "50%", background: "linear-gradient(145deg, #3a3f4b 0%, #1d2028 100%)", border: "1px solid rgba(255,255,255,0.1)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-              <span style={{ fontSize: "16px", fontWeight: 600, color: "#ffffff" }}>{initials}</span>
-            </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: "1px" }}>
-              <h3 style={{ fontSize: "16px", fontWeight: 700, color: "#ffffff", letterSpacing: "-0.01em" }}>{call.callerName}</h3>
-              <p style={{ fontSize: "11px", color: "#30D158", fontWeight: 600 }}>{appHeader}</p>
-            </div>
-          </div>
-
-          <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "999px", padding: "4px 12px" }}>
-            <span style={{ width: "7px", height: "7px", borderRadius: "50%", background: "#30D158" }} className="animate-pulse" />
-            <span style={{ fontSize: "11px", color: "#d4d4d8", fontWeight: 500 }}>Terhubung</span>
-          </div>
+        <div
+          style={{
+            fontSize: "60px",
+            fontWeight: 600,
+            lineHeight: 1.05,
+            color: "#ffffff",
+            letterSpacing: "-0.03em",
+            fontVariantNumeric: "tabular-nums",
+          }}
+        >
+          {isIncoming ? "00:00" : formatDuration(call.durationSec)}
         </div>
-
-        {/* Center: Live Large Duration Timer Display */}
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "4px 0" }}>
-          <div style={{ fontSize: "36px", fontWeight: 600, fontVariantNumeric: "tabular-nums", color: "#ffffff", letterSpacing: "-0.02em" }}>
-            {formatDuration(call.durationSec)}
-          </div>
-          <p style={{ fontSize: "12px", color: "#a1a1aa", marginTop: "1px" }}>
-            {call.isMuted ? "Mikrofon Dimatikan (Muted)" : "Panggilan Suara Aktif"}
-          </p>
+        <div style={{ fontSize: "13px", fontWeight: 500, color: "#a1a1aa" }}>
+          {isIncoming
+            ? "Panggilan suara masuk"
+            : call.isMuted
+            ? "Mikrofon dimatikan"
+            : "Panggilan suara aktif"}
         </div>
+      </div>
 
-        {/* Bottom Control Actions: Mute, Red End Call Pill */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingTop: "4px" }}>
+      {/* ─── 3. BOTTOM SECTION: 56PX ACTION BUTTONS ─── */}
+      {isIncoming ? (
+        /* INCOMING CALL BUTTONS: Tolak (56px bulat merah) + Terima (210px pill hijau) */
+        <div style={{ display: "flex", flexDirection: "row", alignItems: "center", justifyContent: "center", gap: "16px" }}>
+          {/* Tolak Button */}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onDecline();
+            }}
+            aria-label="Tolak panggilan"
+            style={{
+              width: "56px",
+              height: "56px",
+              flexShrink: 0,
+              borderRadius: "50%",
+              border: "none",
+              background: "#FF453A",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: 0,
+              boxShadow: "0 8px 24px rgba(255,69,58,0.32)",
+              cursor: "pointer",
+            }}
+            className="active:scale-95 transition"
+            title="Tolak Panggilan"
+          >
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="#ffffff" aria-hidden="true" style={{ transform: "rotate(135deg)" }}>
+              <path d="M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.25 11.4 11.4 0 0 0 3.6.57 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.45.57 3.57a1 1 0 0 1-.25 1z" />
+            </svg>
+          </button>
+
+          {/* Terima Button */}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onAccept();
+            }}
+            aria-label="Terima panggilan"
+            style={{
+              flex: "0 0 210px",
+              height: "56px",
+              borderRadius: "999px",
+              border: "none",
+              background: "#30D158",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "10px",
+              padding: 0,
+              color: "#ffffff",
+              fontSize: "16px",
+              fontWeight: 600,
+              letterSpacing: "-0.01em",
+              boxShadow: "0 8px 24px rgba(48,209,88,0.32)",
+              cursor: "pointer",
+            }}
+            className="active:scale-95 transition"
+            title="Terima Panggilan"
+          >
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="#ffffff" aria-hidden="true">
+              <path d="M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.25 11.4 11.4 0 0 0 3.6.57 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.45.57 3.57a1 1 0 0 1-.25 1z" />
+            </svg>
+            Terima
+          </button>
+        </div>
+      ) : (
+        /* ACTIVE CALL BUTTONS: Bisukan (56px) + Akhiri (190px pill merah) + Speaker (56px) */
+        <div style={{ display: "flex", flexDirection: "row", alignItems: "center", justifyContent: "center", gap: "16px" }}>
+          {/* Mute Button */}
           <button
             onClick={(e) => {
               e.stopPropagation();
               onToggleMute();
             }}
+            aria-label={call.isMuted ? "Aktifkan mikrofon" : "Bisukan mikrofon"}
             style={{
-              display: "inline-flex",
+              width: "56px",
+              height: "56px",
+              flexShrink: 0,
+              borderRadius: "50%",
+              border: call.isMuted ? "1px solid rgba(255,69,58,0.4)" : "none",
+              background: call.isMuted ? "rgba(255,69,58,0.2)" : "rgba(255,255,255,0.09)",
+              display: "flex",
               alignItems: "center",
-              gap: "6px",
-              padding: "0 14px",
-              height: "38px",
-              borderRadius: "999px",
-              border: call.isMuted ? "1px solid rgba(255,69,58,0.4)" : "1px solid rgba(255,255,255,0.12)",
-              background: call.isMuted ? "rgba(255,69,58,0.16)" : "rgba(255,255,255,0.08)",
-              color: call.isMuted ? "#FF453A" : "#e4e4e7",
-              fontSize: "12px",
-              fontWeight: 600,
+              justifyContent: "center",
+              padding: 0,
               cursor: "pointer",
             }}
             className="active:scale-95 transition"
             title={call.isMuted ? "Aktifkan Mikrofon" : "Bisukan Mikrofon"}
           >
-            {call.isMuted ? <MicOff className="w-3.5 h-3.5" /> : <Mic className="w-3.5 h-3.5" />}
-            <span>{call.isMuted ? "Unmute" : "Mute"}</span>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={call.isMuted ? "#FF453A" : "#ffffff"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <rect x="9" y="3" width="6" height="11" rx="3" />
+              <path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21" />
+            </svg>
           </button>
 
-          {/* End Call Button Pill */}
+          {/* Akhiri Call Button Pill */}
           <button
             onClick={(e) => {
               e.stopPropagation();
               onEnd();
             }}
+            aria-label="Akhiri panggilan"
             style={{
-              height: "38px",
-              padding: "0 22px",
+              flex: "0 0 190px",
+              height: "56px",
               borderRadius: "999px",
-              background: "#FF453A",
-              color: "#ffffff",
-              fontSize: "13px",
-              fontWeight: 600,
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "6px",
-              boxShadow: "0 4px 14px rgba(255,69,58,0.3)",
               border: "none",
+              background: "#FF453A",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "10px",
+              padding: 0,
+              color: "#ffffff",
+              fontSize: "16px",
+              fontWeight: 600,
+              letterSpacing: "-0.01em",
+              boxShadow: "0 8px 24px rgba(255,69,58,0.32)",
               cursor: "pointer",
             }}
             className="active:scale-95 transition"
             title="Akhiri Panggilan"
           >
-            <PhoneOff className="w-3.5 h-3.5" />
-            <span>Akhiri</span>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="#ffffff" aria-hidden="true" style={{ transform: "rotate(135deg)" }}>
+              <path d="M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.25 11.4 11.4 0 0 0 3.6.57 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.45.57 3.57a1 1 0 0 1-.25 1z" />
+            </svg>
+            Akhiri
           </button>
 
-          <div style={{ fontSize: "11px", color: "#8a8a93", fontWeight: 600, letterSpacing: "0.08em" }}>{username}</div>
+          {/* Speaker Button */}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsSpeakerOn((prev) => !prev);
+            }}
+            aria-label="Pengeras suara"
+            style={{
+              width: "56px",
+              height: "56px",
+              flexShrink: 0,
+              borderRadius: "50%",
+              border: isSpeakerOn ? "1px solid rgba(48,209,88,0.4)" : "none",
+              background: isSpeakerOn ? "rgba(48,209,88,0.2)" : "rgba(255,255,255,0.09)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: 0,
+              cursor: "pointer",
+            }}
+            className="active:scale-95 transition"
+            title={isSpeakerOn ? "Speaker Aktif" : "Aktifkan Speaker"}
+          >
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={isSpeakerOn ? "#30D158" : "#ffffff"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M4 9.5v5h3.5L12 18.5v-13L7.5 9.5z" />
+              <path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11" />
+            </svg>
+          </button>
         </div>
-      </div>
-    );
-  }
-
-  return (
-    <div style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "#a1a1aa" }}>
-      <PhoneOff className="w-8 h-8 text-neutral-500 mb-2" />
-      <span style={{ fontSize: "15px", fontWeight: 600, color: "#d4d4d8" }}>Panggilan Berakhir</span>
+      )}
     </div>
   );
 };

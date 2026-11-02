@@ -60,8 +60,28 @@ export function useNotifications() {
         const notifs = event.payload;
         setNotifications(notifs);
 
+        // Only allow whitelisted message/chat and media apps; discard system/hardware noise completely
+        const isWhitelistedApp = (n: AppNotification) => {
+          if (n.appType === "system") return false;
+          const text = `${n.appName} ${n.title || ""} ${n.message || ""}`.toLowerCase();
+          const isHardwareAudio =
+            text.includes("headset") ||
+            text.includes("headphone") ||
+            text.includes("earphone") ||
+            text.includes("hands-free") ||
+            text.includes("siap digunakan") ||
+            text.includes("ready to use") ||
+            text.includes("tersambung ke") ||
+            text.includes("mode resume") ||
+            text.includes("system mode") ||
+            text.includes("mode pemulihan");
+
+          return !isHardwareAudio;
+        };
+
         // Detect if any new notification ID arrived OR existing notification got updated text
         const newlyArrived = notifs.find((n) => {
+          if (!isWhitelistedApp(n)) return false;
           const sig = `${n.title}::${n.message}`;
           const prevSig = seenSignaturesRef.current.get(n.id);
           return prevSig !== sig;

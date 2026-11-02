@@ -3,26 +3,32 @@ import { invoke } from "@tauri-apps/api/core";
 import { NotchState } from "../types";
 
 // Patented Notch Dimensions
-// Compact Idle, Media, Notification, and Bluetooth are standardized to 48px height
-export const COMPACT_IDLE_WIDTH = 270;
-export const COMPACT_MEDIA_WIDTH = 270;
-export const COMPACT_HEIGHT = 48;
+// Apple MacBook Notch Resting Dimensions: 215x40px
+export const COMPACT_IDLE_WIDTH = 215;
+export const COMPACT_MEDIA_WIDTH = 215;
+export const COMPACT_HEIGHT = 40;
 
-export const NOTIFICATION_BANNER_WIDTH = 280;
-export const NOTIFICATION_BANNER_HEIGHT = 48;
+// Notification Banner Dimension - matched to 400x78px (same as Charging & Bluetooth)
+export const NOTIFICATION_BANNER_WIDTH = 400;
+export const NOTIFICATION_BANNER_HEIGHT = 78;
 
-export const BLUETOOTH_BANNER_WIDTH = 280;
-export const BLUETOOTH_BANNER_HEIGHT = 48;
+// Bluetooth Banner Dimension - matched to 400x78px (same as Charging Banner)
+export const BLUETOOTH_BANNER_WIDTH = 400;
+export const BLUETOOTH_BANNER_HEIGHT = 78;
+
+// Charging Banner Dimension - 100% matched to Charging.dc.html (400x78px)
+export const CHARGING_BANNER_WIDTH = 400;
+export const CHARGING_BANNER_HEIGHT = 78;
 
 // Expanded Dimensions: Compact and clean (460x225px) to prevent bottom pagination dots collision
 export const EXPANDED_WIDTH = 460;
 export const EXPANDED_HEIGHT = 225;
 
 export const EXPANDED_LYRICS_WIDTH = 680;
-export const EXPANDED_LYRICS_HEIGHT = 225;
+export const EXPANDED_LYRICS_HEIGHT = 245;
 
-export const CALL_EXPANDED_WIDTH = 460;
-export const CALL_EXPANDED_HEIGHT = 225;
+export const CALL_EXPANDED_WIDTH = 500;
+export const CALL_EXPANDED_HEIGHT = 290;
 
 export const SYSTEM_MONITOR_WIDTH = 460;
 export const SYSTEM_MONITOR_HEIGHT = 225;
@@ -33,7 +39,8 @@ export function useWindowResize(
   isMediaPlaying: boolean = false,
   isBluetoothBannerActive: boolean = false,
   isNotificationActive: boolean = false,
-  isCallActive: boolean = false
+  isCallActive: boolean = false,
+  isChargingBannerActive: boolean = false
 ) {
   useEffect(() => {
     let targetWidth: number;
@@ -51,8 +58,11 @@ export function useWindowResize(
         targetHeight = EXPANDED_HEIGHT;
       }
     } else {
-      // Compact modes
-      if (isBluetoothBannerActive) {
+      // Compact / Banner modes
+      if (isChargingBannerActive) {
+        targetWidth = CHARGING_BANNER_WIDTH;
+        targetHeight = CHARGING_BANNER_HEIGHT;
+      } else if (isBluetoothBannerActive) {
         targetWidth = BLUETOOTH_BANNER_WIDTH;
         targetHeight = BLUETOOTH_BANNER_HEIGHT;
       } else if (isNotificationActive) {
@@ -83,5 +93,6 @@ export function useWindowResize(
     isBluetoothBannerActive,
     isNotificationActive,
     isCallActive,
+    isChargingBannerActive,
   ]);
 }
