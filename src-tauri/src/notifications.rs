@@ -608,18 +608,17 @@ pub fn answer_system_call() -> Result<(), String> {
     use windows::Win32::Foundation::{WPARAM, LPARAM};
 
     let comm_hwnds = get_all_communication_hwnds();
-    for hwnd in comm_hwnds {
+    if let Some(hwnd) = comm_hwnds.first() {
         unsafe {
-            let _ = ShowWindow(hwnd, SW_RESTORE);
-            let _ = SetForegroundWindow(hwnd);
+            let _ = ShowWindow(*hwnd, SW_RESTORE);
+            let _ = SetForegroundWindow(*hwnd);
             std::thread::sleep(std::time::Duration::from_millis(50));
 
             keybd_event(0x0D, 0, 0, 0); // VK_RETURN down
             keybd_event(0x0D, 0, 2, 0); // VK_RETURN up
-            let _ = PostMessageW(hwnd, WM_KEYDOWN, WPARAM(0x0D), LPARAM(0));
-            let _ = PostMessageW(hwnd, WM_KEYUP, WPARAM(0x0D), LPARAM(0));
+            let _ = PostMessageW(*hwnd, WM_KEYDOWN, WPARAM(0x0D), LPARAM(0));
+            let _ = PostMessageW(*hwnd, WM_KEYUP, WPARAM(0x0D), LPARAM(0));
         }
-        break;
     }
 
     Ok(())

@@ -1,17 +1,15 @@
 mod media;
 mod power;
 mod notifications;
-mod sysinfo;
+mod fullscreen;
 mod autostart;
 mod bluetooth;
 mod cursor;
 
-use bluetooth::BluetoothDeviceInfo;
 use cursor::CursorState;
 use media::MediaInfo;
 use notifications::{AppNotification, CallEventInfo};
 use power::BatteryInfo;
-use sysinfo::SystemStats;
 use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{Emitter, Manager};
@@ -77,11 +75,6 @@ fn end_system_call() -> Result<(), String> {
 }
 
 #[tauri::command]
-fn get_system_stats() -> SystemStats {
-    sysinfo::get_system_stats()
-}
-
-#[tauri::command]
 fn get_windows_username() -> String {
     std::env::var("USERNAME").unwrap_or_else(|_| "User".to_string())
 }
@@ -112,29 +105,8 @@ fn set_notch_size(window: tauri::WebviewWindow, width: f64, height: f64) {
 }
 
 #[tauri::command]
-fn set_notch_expanded(window: tauri::WebviewWindow, expanded: bool) {
-    let (w, h) = if expanded { (420.0, 220.0) } else { (375.0, 42.0) };
-    set_notch_size(window, w, h);
-}
-
-#[tauri::command]
-fn get_bluetooth_device() -> Option<BluetoothDeviceInfo> {
-    bluetooth::fetch_connected_bluetooth()
-}
-
-#[tauri::command]
 fn get_cursor_state(window: tauri::WebviewWindow) -> Option<CursorState> {
     cursor::fetch_cursor_state(&window)
-}
-
-#[tauri::command]
-fn trigger_bluetooth_test(name: Option<String>, battery: Option<u8>) {
-    bluetooth::trigger_simulated_bluetooth(BluetoothDeviceInfo {
-        name: name.unwrap_or_else(|| "Baseus Encok WM01".to_string()),
-        battery_percent: battery.unwrap_or(79),
-        connected: true,
-        device_type: "headphones".to_string(),
-    });
 }
 
 #[tauri::command]
@@ -188,9 +160,6 @@ pub fn run() {
             let is_start = autostart::is_autostart_enabled();
             let autostart_item = CheckMenuItem::with_id(app, "toggle_autostart", "🚀 Jalankan saat Startup", true, is_start, None::<&str>)?;
 
-            let test_notif = MenuItem::with_id(app, "test_notif", "🔔 Tes Notifikasi Notch", true, None::<&str>)?;
-            let test_bluetooth = MenuItem::with_id(app, "test_bluetooth", "🎧 Tes Alert Bluetooth", true, None::<&str>)?;
-
             let quit_app = MenuItem::with_id(app, "quit", "❌ Keluar dari Boring Notch", true, None::<&str>)?;
 
             let tray_menu = Menu::with_items(app, &[
@@ -199,8 +168,6 @@ pub fn run() {
                 &PredefinedMenuItem::separator(app)?,
                 &transparency_menu,
                 &autostart_item,
-                &test_notif,
-                &test_bluetooth,
                 &PredefinedMenuItem::separator(app)?,
                 &quit_app,
             ])?;
@@ -244,24 +211,6 @@ pub fn run() {
                             } else {
                                 let _ = autostart::enable_autostart();
                             }
-                        }
-                        "test_notif" => {
-                            notifications::trigger_simulated_notification(AppNotification {
-                                id: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as u32,
-                                app_name: "WhatsApp".to_string(),
-                                app_type: "whatsapp".to_string(),
-                                title: "Budi Santoso".to_string(),
-                                message: "Halo bro, ada pesan penting nih!".to_string(),
-                                is_call: false,
-                            });
-                        }
-                        "test_bluetooth" => {
-                            bluetooth::trigger_simulated_bluetooth(BluetoothDeviceInfo {
-                                name: "Baseus Encok WM01".to_string(),
-                                battery_percent: 85,
-                                connected: true,
-                                device_type: "headphones".to_string(),
-                            });
                         }
                         "quit" => {
                             app.exit(0);
@@ -309,8 +258,8 @@ pub fn run() {
 
                     // 2. Video fullscreen auto-hide detection
                     let is_video_fs = match &current_media {
-                        Some(m) => sysinfo::is_video_fullscreen(Some(&m.source_app), m.is_playing),
-                        None => sysinfo::is_video_fullscreen(None, false),
+                        Some(m) => fullscreen::is_video_fullscreen(Some(&m.source_app), m.is_playing),
+                        None => fullscreen::is_video_fullscreen(None, false),
                     };
 
                     if let Some(window) = app_handle.get_webview_window("main") {
@@ -373,13 +322,8 @@ pub fn run() {
 
                     if call_key != last_call_key {
                         last_call_key = call_key;
-                        println!("[Call Event] Streaming call: {:?}", current_call);
                         let _ = app_handle.emit("call-state-changed", &current_call);
                     }
-
-                    // 7. System Stats streaming
-                    let stats = sysinfo::get_system_stats();
-                    let _ = app_handle.emit("system-stats-changed", &stats);
 
                     // 8. Bluetooth Connected Event Streaming
                     if let Some(bt) = bluetooth::fetch_connected_bluetooth() {
@@ -437,15 +381,11 @@ pub fn run() {
             get_battery_state,
             get_active_notifications,
             get_active_call,
-            get_system_stats,
             get_windows_username,
             is_autostart_enabled,
             set_autostart_enabled,
             set_notch_size,
-            set_notch_expanded,
-            get_bluetooth_device,
             get_cursor_state,
-            trigger_bluetooth_test,
             trigger_notification_test,
             answer_system_call,
             decline_system_call,

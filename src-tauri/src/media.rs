@@ -23,7 +23,6 @@ static CACHED_THUMBNAIL: Mutex<Option<(String, Option<String>)>> = Mutex::new(No
 
 // Cached last active app and media info to maintain state when paused
 static LAST_ACTIVE_APP: Mutex<Option<String>> = Mutex::new(None);
-static LAST_VALID_MEDIA: Mutex<Option<(MediaInfo, std::time::Instant)>> = Mutex::new(None);
 
 #[cfg(windows)]
 use windows::Media::Control::{
@@ -171,7 +170,6 @@ pub fn fetch_current_media() -> Option<MediaInfo> {
     let manager = match get_session_manager() {
         Some(m) => m,
         None => {
-            *LAST_VALID_MEDIA.lock().unwrap() = None;
             *LAST_ACTIVE_APP.lock().unwrap() = None;
             return None;
         }
@@ -180,7 +178,6 @@ pub fn fetch_current_media() -> Option<MediaInfo> {
     // If there are 0 sessions registered in Windows, all media players were closed!
     if let Ok(sessions) = manager.GetSessions() {
         if sessions.Size().unwrap_or(0) == 0 {
-            *LAST_VALID_MEDIA.lock().unwrap() = None;
             *LAST_ACTIVE_APP.lock().unwrap() = None;
             return None;
         }
@@ -190,7 +187,6 @@ pub fn fetch_current_media() -> Option<MediaInfo> {
         Some(s) => s,
         None => {
             // No active or valid paused session exists -> media player was closed or stopped!
-            *LAST_VALID_MEDIA.lock().unwrap() = None;
             *LAST_ACTIVE_APP.lock().unwrap() = None;
             return None;
         }
@@ -206,7 +202,6 @@ pub fn fetch_current_media() -> Option<MediaInfo> {
     let source_app = session.SourceAppUserModelId().map(|s| s.to_string()).unwrap_or_default();
 
     if title.trim().is_empty() && artist.trim().is_empty() {
-        *LAST_VALID_MEDIA.lock().unwrap() = None;
         return None;
     }
 
@@ -276,7 +271,6 @@ pub fn fetch_current_media() -> Option<MediaInfo> {
         source_app,
     };
 
-    *LAST_VALID_MEDIA.lock().unwrap() = Some((media_info.clone(), std::time::Instant::now()));
     Some(media_info)
 }
 

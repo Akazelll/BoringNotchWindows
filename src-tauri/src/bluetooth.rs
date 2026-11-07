@@ -681,7 +681,9 @@ pub fn fetch_connected_bluetooth() -> Option<BluetoothDeviceInfo> {
     None
 }
 
-/// Allows manually or programmatically simulating a Bluetooth connect event
+/// Injects a simulated Bluetooth connect event. Only used by tests now that the
+/// tray test entry is gone; the read path in `fetch_connected_bluetooth` stays live.
+#[cfg(test)]
 pub fn trigger_simulated_bluetooth(device: BluetoothDeviceInfo) {
     if let Ok(mut lock) = SIMULATION_QUEUE.lock() {
         *lock = Some(device);

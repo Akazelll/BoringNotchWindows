@@ -1,0 +1,150 @@
+import {
+  LABEL_WIDTH,
+  arcFraction,
+  formatHHMMId,
+  formatRelative,
+  loadFired,
+  nextPrayerIndex,
+  parseHHMM,
+  resolveDue,
+  saveFired,
+  spreadLabelPositions,
+  sunArcXY,
+  zoneWallClock,
+  type PrayerTimes,
+} from "./prayerTimes.ts";
+
+function assert(condition: boolean, message: string): asserts condition {
+  if (!condition) throw new Error(message);
+}
+
+// Node murni tidak punya localStorage; guard harian diuji di atas stub kecil ini.
+if (typeof globalThis.localStorage === "undefined") {
+  const store = new Map<string, string>();
+  (globalThis as { localStorage?: Storage }).localStorage = {
+    getItem: (key: string) => store.get(key) ?? null,
+    setItem: (key: string, value: string) => void store.set(key, value),
+    removeItem: (key: string) => void store.delete(key),
+    clear: () => store.clear(),
+    key: (index: number) => [...store.keys()][index] ?? null,
+    get length() {
+      return store.size;
+    },
+  } as Storage;
+}
+
+// Data referensi dari Prayer.dc.html (Subuh 04:32 ... Isya 19:01).
+const TIMES: PrayerTimes = {
+  Fajr: "04:32",
+  Dhuhr: "11:52",
+  Asr: "15:12",
+  Maghrib: "17:48",
+  Isha: "19:01",
+};
+
+assert(parseHHMM("04:04") === 244, "parseHHMM 04:04");
+assert(parseHHMM("19:00") === 1140, "parseHHMM 19:00");
+assert(formatHHMMId("17:47") === "17.47", "formatHHMMId memakai titik");
+
+// Timezone lokasi yang dipakai, bukan timezone perangkat: 17:30Z = 00:30 di Jakarta (hari berikutnya).
+const jakarta = zoneWallClock(Date.UTC(2026, 10, 7, 17, 30), "Asia/Jakarta");
+assert(jakarta.dateKey === "2026-11-08", `dateKey Jakarta, dapat ${jakarta.dateKey}`);
+assert(jakarta.minutes === 30, `menit Jakarta, dapat ${jakarta.minutes}`);
+const newYork = zoneWallClock(Date.UTC(2026, 10, 7, 17, 30), "America/New_York");
+assert(newYork.dateKey === "2026-11-07", `dateKey New York, dapat ${newYork.dateKey}`);
+assert(newYork.minutes === 12 * 60 + 30, `menit New York, dapat ${newYork.minutes}`);
+
+// Grace window: tepat waktu dan telat 3 menit muncul, telat 6 menit hangus tanpa banner.
+const before = resolveDue(parseHHMM("17:47"), TIMES, []);
+assert(before.due === null, "sebelum waktunya tidak memicu");
+assert(!before.expired.includes("Maghrib"), "yang belum tiba tidak dihanguskan");
+assert(before.expired.includes("Asr"), "salat yang sudah lama lewat dihanguskan");
+
+const onTime = resolveDue(parseHHMM("17:48"), TIMES, []);
+assert(onTime.due === "Maghrib", "tepat waktu memicu");
+// Yang memicu belum ditandai: penanda ditulis hanya setelah banner benar-benar tampil,
+// supaya reminder tidak hilang saat notch sedang expanded.
+assert(!onTime.expired.includes("Maghrib" as never), "yang memicu belum dihanguskan");
+
+const late = resolveDue(parseHHMM("17:51"), TIMES, []);
+assert(late.due === "Maghrib", "telat 3 menit masih memicu");
+
+const tooLate = resolveDue(parseHHMM("17:54"), TIMES, []);
+assert(tooLate.due === null, "telat 6 menit tidak memicu");
+assert(tooLate.expired.includes("Maghrib"), "yang terlewat dihanguskan tanpa banner");
+
+const already = resolveDue(parseHHMM("17:48"), TIMES, ["Maghrib"]);
+assert(already.due === null, "tidak memicu dua kali");
+assert(!already.expired.includes("Maghrib"), "yang sudah tampil tidak dihanguskan lagi");
+
+const multiLate = resolveDue(parseHHMM("15:14"), TIMES, []);
+assert(multiLate.due === "Asr", "hanya salat dalam grace yang memicu");
+assert(multiLate.expired.includes("Dhuhr"), "salat yang lebih tua dihanguskan diam-diam");
+assert(!multiLate.expired.includes("Asr"), "yang memicu tidak dihanguskan");
+
+// Busur matahari dikunci ke nilai artboard.
+const start = sunArcXY(0);
+assert(start.x === 12 && start.y === 78, "ujung kiri busur");
+const mid = sunArcXY(0.5);
+assert(mid.x === 130 && mid.y === 12, `puncak busur, dapat ${mid.x},${mid.y}`);
+const quarter = sunArcXY(0.25);
+assert(quarter.y === 28.5, `busur pada t=0.25, dapat ${quarter.y}`);
+const end = sunArcXY(1);
+assert(end.x === 248 && end.y === 78, "ujung kanan busur");
+assert(sunArcXY(-0.3).x === 12 && sunArcXY(1.4).x === 248, "fraction dijepit ke ujung");
+
+// Posisi salat naik monoton dan tetap di dalam viewBox.
+let previousX = -1;
+for (const key of ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"] as const) {
+  const { x } = sunArcXY(arcFraction(parseHHMM(TIMES[key]), TIMES));
+  assert(x > previousX, `posisi ${key} harus naik`);
+  assert(x >= 0 && x <= 260, `posisi ${key} di dalam viewBox`);
+  previousX = x;
+}
+
+// Posisi label: hanya yang berdesakan yang bergeser, selalu ke kiri, tidak ada yang bertumpuk.
+// Panel 241px adalah keadaan nyata di kartu 540px; tikungan busur px-nya 11,122,170,212,230.
+const spread = spreadLabelPositions([11, 122, 170, 212, 230], 241);
+assert(
+  spread.map((v) => Math.round(v)).join() === "23,80,126,172,218",
+  `spread panel 241, dapat ${spread.map((v) => Math.round(v)).join()}`
+);
+for (let i = 1; i < spread.length; i += 1) {
+  assert(spread[i] - spread[i - 1] >= LABEL_WIDTH, `label ${i} harus berjarak >= ${LABEL_WIDTH}px`);
+}
+assert(spread[0] < spread[1] && spread[1] < spread[2], "urutan label tetap naik");
+assert(
+  spread.every((x) => x >= LABEL_WIDTH / 2 && x <= 241 - LABEL_WIDTH / 2),
+  "semua label di dalam panel"
+);
+
+// Label yang sudah cukup di kiri tidak ikut bergeser.
+const alreadyLeft = spreadLabelPositions([23, 122, 172, 212, 230], 241);
+assert(Math.round(alreadyLeft[0]) === 23, "label paling kiri tidak digeser kalau sudah pas");
+
+// Posisi marker yang sudah rapi tidak diubah sama sekali.
+const roomy = spreadLabelPositions([60, 120, 180, 240, 300], 400);
+assert(roomy.join() === "60,120,180,240,300", `posisi lega tidak diubah, dapat ${roomy.join()}`);
+
+// Panel sempit: tidak boleh ada posisi di luar panel (bertumpuk tidak terhindarkan,
+// 5 kotak 46px butuh 230px).
+const narrow = spreadLabelPositions([11, 122, 170, 212, 230], 120);
+assert(
+  narrow.every((x) => x >= 0 && x <= 120),
+  `panel sempit tetap di dalam panel, dapat ${narrow.join()}`
+);
+
+assert(formatRelative(68) === "dalam 1 j 8 mnt", "formatRelative 68 menit");
+assert(formatRelative(45) === "dalam 45 mnt", "formatRelative 45 menit");
+assert(formatRelative(0) === "sekarang", "formatRelative 0 menit");
+assert(formatRelative(120) === "dalam 2 j", "formatRelative 2 jam pas");
+
+assert(nextPrayerIndex(TIMES, parseHHMM("16:40")) === 3, "16:40 berikutnya Maghrib");
+assert(nextPrayerIndex(TIMES, parseHHMM("23:30")) === 0, "setelah Isya membungkus ke Subuh");
+
+// Guard harian: tanggal sama memakai daftar tersimpan, tanggal lain mereset.
+saveFired("2026-11-07", ["Fajr"]);
+assert(loadFired("2026-11-07").join() === "Fajr", "daftar hari ini dibaca kembali");
+assert(loadFired("2026-11-08").length === 0, "tanggal berbeda mereset daftar");
+
+console.log("prayerTimes: ok");

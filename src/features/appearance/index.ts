@@ -1,0 +1,1 @@
+export { useOpacity } from "./hooks/useOpacity";

@@ -24,12 +24,19 @@ export default {
         "robot-blink": "robotBlink 5s ease-in-out infinite",
         "float-z-1": "floatZ 2.6s ease-in-out infinite",
         "float-z-2": "floatZ 2.6s ease-in-out 0.9s infinite",
+        // Sekali jalan sepanjang durasi tampil banner prayer (BANNER_MS), bukan loop tanpa henti.
+        "prayer-drain": "prayerDrain 20s linear 1 forwards",
       },
       keyframes: {
         soundBar: {
           "0%": { height: "4px" },
           "100%": { height: "16px" },
         },
+        prayerDrain: {
+          "0%": { width: "100%" },
+          "100%": { width: "0%" },
+        },
+
         callWv1: {
           "0%, 100%": { height: "5px" },
           "50%": { height: "16px" },
