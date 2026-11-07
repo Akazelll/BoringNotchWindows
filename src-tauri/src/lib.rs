@@ -4,8 +4,10 @@ mod notifications;
 mod sysinfo;
 mod autostart;
 mod bluetooth;
+mod cursor;
 
 use bluetooth::BluetoothDeviceInfo;
+use cursor::CursorState;
 use media::MediaInfo;
 use notifications::{AppNotification, CallEventInfo};
 use power::BatteryInfo;
@@ -66,12 +68,12 @@ fn answer_system_call() -> Result<(), String> {
 
 #[tauri::command]
 fn decline_system_call() -> Result<(), String> {
-    notifications::decline_or_end_system_call()
+    notifications::decline_or_end_system_call(true)
 }
 
 #[tauri::command]
 fn end_system_call() -> Result<(), String> {
-    notifications::decline_or_end_system_call()
+    notifications::decline_or_end_system_call(false)
 }
 
 #[tauri::command]
@@ -118,6 +120,11 @@ fn set_notch_expanded(window: tauri::WebviewWindow, expanded: bool) {
 #[tauri::command]
 fn get_bluetooth_device() -> Option<BluetoothDeviceInfo> {
     bluetooth::fetch_connected_bluetooth()
+}
+
+#[tauri::command]
+fn get_cursor_state(window: tauri::WebviewWindow) -> Option<CursorState> {
+    cursor::fetch_cursor_state(&window)
 }
 
 #[tauri::command]
@@ -398,6 +405,28 @@ pub fn run() {
                 }
             });
 
+            // Task terpisah: posisi kursor untuk mata robot saat notch idle.
+            // 100ms agar gerakan pupil mengikuti `transition: 90ms` di frontend dengan mulus.
+            let cursor_handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                let mut last = CursorState::default();
+                loop {
+                    tokio::time::sleep(Duration::from_millis(100)).await;
+
+                    let Some(window) = cursor_handle.get_webview_window("main") else {
+                        continue;
+                    };
+                    let Some(state) = cursor::fetch_cursor_state(&window) else {
+                        continue;
+                    };
+
+                    if state.changed_enough(&last) {
+                        let _ = cursor_handle.emit("cursor-state-changed", &state);
+                        last = state;
+                    }
+                }
+            });
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -415,6 +444,7 @@ pub fn run() {
             set_notch_size,
             set_notch_expanded,
             get_bluetooth_device,
+            get_cursor_state,
             trigger_bluetooth_test,
             trigger_notification_test,
             answer_system_call,

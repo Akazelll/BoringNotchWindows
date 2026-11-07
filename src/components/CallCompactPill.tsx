@@ -1,6 +1,6 @@
 import React from "react";
 import { CallInfo } from "../types";
-import { Phone, PhoneOff, MessageCircle, Gamepad2 } from "lucide-react";
+import { getInitials, getAppMeta } from "../utils/callDisplay";
 
 interface CallCompactPillProps {
   call: CallInfo;
@@ -9,12 +9,33 @@ interface CallCompactPillProps {
   onEnd: () => void;
 }
 
-function formatDuration(sec: number): string {
-  const m = Math.floor(sec / 60);
-  const s = sec % 60;
-  return `${m < 10 ? "0" : ""}${m}:${s < 10 ? "0" : ""}${s}`;
-}
+const PHONE_PATH =
+  "M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.25 11.4 11.4 0 0 0 3.6.57 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.45.57 3.57a1 1 0 0 1-.25 1z";
 
+// Tinggi + animasi tiap bar gelombang suara. Referensi memakai 5 bar dari 3 keyframe.
+const WAVE_BARS: { anim: string; cls: string }[] = [
+  { anim: "8px", cls: "animate-call-wv-1" },
+  { anim: "8px", cls: "animate-call-wv-2" },
+  { anim: "8px", cls: "animate-call-wv-3" },
+  { anim: "8px", cls: "animate-call-wv-2" },
+  { anim: "8px", cls: "animate-call-wv-1" },
+];
+
+const smallBtnStyle = (background: string): React.CSSProperties => ({
+  width: "30px",
+  height: "30px",
+  flexShrink: 0,
+  borderRadius: "50%",
+  border: "none",
+  background,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: 0,
+  cursor: "pointer",
+});
+
+// Referensi: CallStates.dc.html — state "Ringkas" (220x46).
 export const CallCompactPill: React.FC<CallCompactPillProps> = ({
   call,
   onAccept,
@@ -23,61 +44,107 @@ export const CallCompactPill: React.FC<CallCompactPillProps> = ({
 }) => {
   const isIncoming = call.state === "incoming";
   const isActive = call.state === "active";
+  const initials = getInitials(call.callerName);
+  const app = getAppMeta(call.appSource);
 
-  // App logo helper
-  const getAppIcon = () => {
-    if (call.appSource === "whatsapp") {
-      return <MessageCircle className="w-3.5 h-3.5 text-emerald-400 fill-current" />;
-    }
-    if (call.appSource === "discord") {
-      return <Gamepad2 className="w-3.5 h-3.5 text-indigo-400" />;
-    }
-    return <Phone className="w-3.5 h-3.5 text-emerald-400" />;
-  };
+  const avatar = (size: number, fontSize: number) => (
+    <div style={{ position: "relative", width: `${size}px`, height: `${size}px`, flexShrink: 0 }}>
+      <div
+        style={{
+          width: `${size}px`,
+          height: `${size}px`,
+          borderRadius: "50%",
+          background: "linear-gradient(145deg, #3a3f4b 0%, #1d2028 100%)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontSize: `${fontSize}px`,
+          fontWeight: 600,
+          color: "#e4e4e7",
+          boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.14)",
+        }}
+        aria-hidden="true"
+      >
+        {initials}
+      </div>
+      <div
+        style={{
+          position: "absolute",
+          right: "-3px",
+          bottom: "-3px",
+          width: "14px",
+          height: "14px",
+          boxSizing: "border-box",
+          borderRadius: "50%",
+          background: isIncoming || !call.isMuted ? app.color : "#FF9F0A",
+          border: "2px solid #09090b",
+        }}
+        className={isIncoming ? "animate-pulse" : undefined}
+        aria-hidden="true"
+      />
+    </div>
+  );
 
   if (isIncoming) {
     return (
-      <div className="w-full h-full flex items-center justify-between px-3 text-white select-none bg-transparent animate-in fade-in duration-200">
-        {/* Left: Caller info with ringing icon */}
-        <div className="flex items-center gap-2 min-w-0 max-w-[170px]">
-          <div className="relative w-6 h-6 rounded-full bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center flex-shrink-0">
-            {getAppIcon()}
-            <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-emerald-400 rounded-full animate-ping" />
-          </div>
-          <div className="flex flex-col min-w-0 leading-tight justify-center">
-            <span className="text-[11px] font-bold truncate text-white tracking-tight">
-              {call.callerName}
-            </span>
-            <span className="text-[9px] text-emerald-400 font-medium truncate">
-              Panggilan Masuk...
-            </span>
-          </div>
+      <div
+        style={{
+          width: "100%",
+          height: "100%",
+          boxSizing: "border-box",
+          padding: "0 14px 0 9px",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+        }}
+        className="select-none"
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0 }}>
+          {avatar(30, 12)}
+          <span
+            style={{
+              fontSize: "12px",
+              fontWeight: 700,
+              color: "#ffffff",
+              letterSpacing: "-0.01em",
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+            }}
+          >
+            {call.callerName}
+          </span>
         </div>
 
-        {/* Right: Accept & Decline Buttons */}
-        <div className="flex items-center gap-2 flex-shrink-0">
-          {/* Decline (Red) */}
+        <div style={{ display: "flex", alignItems: "center", gap: "6px", flexShrink: 0 }}>
           <button
             onClick={(e) => {
               e.stopPropagation();
               onDecline();
             }}
-            className="w-7 h-7 rounded-full bg-rose-600 hover:bg-rose-500 text-white flex items-center justify-center transition active:scale-90 cursor-pointer shadow-sm"
+            aria-label="Tolak panggilan"
             title="Tolak Panggilan"
+            style={smallBtnStyle("#FF453A")}
+            className="active:scale-90 transition"
           >
-            <PhoneOff className="w-3.5 h-3.5" />
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="#ffffff" aria-hidden="true" style={{ transform: "rotate(135deg)" }}>
+              <path d={PHONE_PATH} />
+            </svg>
           </button>
 
-          {/* Accept (Green) */}
           <button
             onClick={(e) => {
               e.stopPropagation();
               onAccept();
             }}
-            className="w-7 h-7 rounded-full bg-emerald-500 hover:bg-emerald-400 text-white flex items-center justify-center transition active:scale-90 cursor-pointer shadow-sm animate-pulse"
+            aria-label="Terima panggilan"
             title="Terima Panggilan"
+            style={smallBtnStyle("#30D158")}
+            className="active:scale-90 transition"
           >
-            <Phone className="w-3.5 h-3.5" />
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="#ffffff" aria-hidden="true">
+              <path d={PHONE_PATH} />
+            </svg>
           </button>
         </div>
       </div>
@@ -86,42 +153,71 @@ export const CallCompactPill: React.FC<CallCompactPillProps> = ({
 
   if (isActive) {
     return (
-      <div className="w-full h-full flex items-center justify-between px-3 text-white select-none bg-transparent">
-        {/* Left: Caller info */}
-        <div className="flex items-center gap-2 min-w-0 max-w-[150px]">
-          <div className="w-6 h-6 rounded-full bg-[#16181f] border border-white/20 flex items-center justify-center flex-shrink-0">
-            {getAppIcon()}
-          </div>
-          <span className="text-[11px] font-bold truncate text-white tracking-tight">
-            {call.callerName}
-          </span>
+      <div
+        style={{
+          width: "100%",
+          height: "100%",
+          boxSizing: "border-box",
+          padding: "0 14px 0 9px",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: "8px",
+        }}
+        className="select-none"
+      >
+        {avatar(30, 12)}
+
+        {/* Gelombang suara: 5 bar seperti referensi; saat bisu berhenti bergerak. */}
+        <div
+          style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "3px", height: "22px", flex: 1 }}
+          aria-hidden="true"
+        >
+          {WAVE_BARS.map((bar, i) => (
+            <div
+              key={i}
+              className={call.isMuted ? undefined : bar.cls}
+              style={{
+                width: "3px",
+                borderRadius: "2px",
+                background: call.isMuted ? "#6E9BD6" : "#30D158",
+                height: call.isMuted ? "6px" : bar.anim,
+              }}
+            />
+          ))}
         </div>
 
-        {/* Center: Live Call Duration Ticker */}
-        <div className="flex items-center gap-1.5 font-mono text-emerald-400 text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-950/40 border border-emerald-500/20">
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-          <span>{formatDuration(call.durationSec)}</span>
-        </div>
-
-        {/* Right: End Call Button */}
-        <div className="flex items-center gap-1.5 flex-shrink-0">
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onEnd();
-            }}
-            className="w-7 h-7 rounded-full bg-rose-600 hover:bg-rose-500 text-white flex items-center justify-center transition active:scale-90 cursor-pointer shadow-sm"
-            title="Akhiri Panggilan"
-          >
-            <PhoneOff className="w-3.5 h-3.5" />
-          </button>
-        </div>
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onEnd();
+          }}
+          aria-label="Akhiri panggilan"
+          title="Akhiri Panggilan"
+          style={smallBtnStyle("#FF453A")}
+          className="active:scale-90 transition"
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="#ffffff" aria-hidden="true" style={{ transform: "rotate(135deg)" }}>
+            <path d={PHONE_PATH} />
+          </svg>
+        </button>
       </div>
     );
   }
 
   return (
-    <div className="w-full h-full flex items-center justify-center text-xs text-neutral-400 bg-transparent">
+    <div
+      style={{
+        width: "100%",
+        height: "100%",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        fontSize: "12px",
+        color: "#a1a1aa",
+      }}
+      className="select-none"
+    >
       <span>Panggilan Berakhir</span>
     </div>
   );

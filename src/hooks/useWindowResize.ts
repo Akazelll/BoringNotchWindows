@@ -27,8 +27,11 @@ export const EXPANDED_HEIGHT = 225;
 export const EXPANDED_LYRICS_WIDTH = 680;
 export const EXPANDED_LYRICS_HEIGHT = 245;
 
-export const CALL_EXPANDED_WIDTH = 500;
-export const CALL_EXPANDED_HEIGHT = 290;
+// Panggilan: referensi CallStates.dc.html — "Ringkas" 220x46 dan "Standar" 380x74.
+export const CALL_COMPACT_WIDTH = 220;
+export const CALL_COMPACT_HEIGHT = 46;
+export const CALL_EXPANDED_WIDTH = 380;
+export const CALL_EXPANDED_HEIGHT = 74;
 
 export const SYSTEM_MONITOR_WIDTH = 460;
 export const SYSTEM_MONITOR_HEIGHT = 225;
@@ -58,8 +61,11 @@ export function useWindowResize(
         targetHeight = EXPANDED_HEIGHT;
       }
     } else {
-      // Compact / Banner modes
-      if (isChargingBannerActive) {
+      // Compact / Banner modes — panggilan didahulukan agar cocok dengan urutan render di App.
+      if (isCallActive) {
+        targetWidth = CALL_COMPACT_WIDTH;
+        targetHeight = CALL_COMPACT_HEIGHT;
+      } else if (isChargingBannerActive) {
         targetWidth = CHARGING_BANNER_WIDTH;
         targetHeight = CHARGING_BANNER_HEIGHT;
       } else if (isBluetoothBannerActive) {

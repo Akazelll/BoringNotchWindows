@@ -9,11 +9,14 @@ import { useOpacity } from "./hooks/useOpacity";
 import { useBluetooth } from "./hooks/useBluetooth";
 import { usePomodoro } from "./hooks/usePomodoro";
 import { useLyrics } from "./hooks/useLyrics";
+import { useCursor } from "./hooks/useCursor";
 import {
   useWindowResize,
   COMPACT_MEDIA_WIDTH,
   COMPACT_IDLE_WIDTH,
   COMPACT_HEIGHT,
+  CALL_COMPACT_WIDTH,
+  CALL_COMPACT_HEIGHT,
   NOTIFICATION_BANNER_WIDTH,
   NOTIFICATION_BANNER_HEIGHT,
   BLUETOOTH_BANNER_WIDTH,
@@ -35,7 +38,10 @@ import { ExpandedCard } from "./components/ExpandedCard";
 import { CallCompactPill } from "./components/CallCompactPill";
 import { CallExpandedCard } from "./components/CallExpandedCard";
 import { NotchTopEars } from "./components/NotchTopEars";
-import { NotchState } from "./types";
+import { NotchState, RobotMood } from "./types";
+
+/** Di bawah persentase ini wajah robot jadi sedih — selama tidak sedang dicas. */
+const LOW_BATTERY = 20;
 
 export default function App() {
   const [state, setState] = useState<NotchState>("compact");
@@ -65,6 +71,15 @@ export default function App() {
 
   const pomodoro = usePomodoro();
   const lyricsData = useLyrics(media); // Background pre-fetching as soon as music plays
+
+  const cursor = useCursor();
+  // Priority bila beberapa kondisi terpenuhi: baterai rendah > kursor diam > normal.
+  const robotMood: RobotMood =
+    battery.level < LOW_BATTERY && !battery.isCharging
+      ? "sad"
+      : cursor.isIdle
+      ? "sleepy"
+      : "normal";
 
   const [chargingBannerMode, setChargingBannerMode] = useState<ChargingBannerMode | null>(null);
   const prevIsChargingRef = useRef<boolean>(battery.isCharging);
@@ -143,7 +158,7 @@ export default function App() {
     if (isCallActive) {
       currentWidth = CALL_EXPANDED_WIDTH;
       currentHeight = CALL_EXPANDED_HEIGHT;
-      notchRadiusClass = "rounded-b-[18px]";
+      notchRadiusClass = "rounded-b-[36px]";
     } else if (isLyricsOpen) {
       currentWidth = EXPANDED_LYRICS_WIDTH;
       currentHeight = EXPANDED_LYRICS_HEIGHT;
@@ -154,7 +169,12 @@ export default function App() {
       notchRadiusClass = "rounded-b-[18px]";
     }
   } else {
-    if (isChargingBannerActive) {
+    // Panggilan didahulukan, sama seperti urutan render di bawah.
+    if (isCallActive) {
+      currentWidth = CALL_COMPACT_WIDTH;
+      currentHeight = CALL_COMPACT_HEIGHT;
+      notchRadiusClass = "rounded-b-[24px]";
+    } else if (isChargingBannerActive) {
       currentWidth = CHARGING_BANNER_WIDTH;
       currentHeight = CHARGING_BANNER_HEIGHT;
       notchRadiusClass = "rounded-b-[38px]";
@@ -248,7 +268,17 @@ export default function App() {
             width: `${currentWidth}px`,
             height: `${currentHeight}px`,
             boxShadow:
-              chargingBannerMode === "connected"
+              // Panggilan diperiksa lebih dulu: rantai ini posisional, cabang di bawahnya
+              // tidak akan pernah terjangkau.
+              isCallActive && call
+                ? isExpanded
+                  ? call.isMuted
+                    ? "0 16px 36px rgba(0,0,0,0.5), 0 0 50px rgba(255,255,255,0.05)"
+                    : "0 16px 36px rgba(0,0,0,0.5), 0 0 50px rgba(48,209,88,0.1)"
+                  : call.isMuted
+                  ? "0 14px 30px rgba(0,0,0,0.5), 0 0 40px rgba(255,255,255,0.05)"
+                  : "0 14px 30px rgba(0,0,0,0.5), 0 0 40px rgba(48,209,88,0.1)"
+                : chargingBannerMode === "connected"
                 ? "0 18px 40px rgba(0,0,0,0.5), 0 0 60px rgba(48,209,88,0.12)"
                 : chargingBannerMode === "disconnected"
                 ? "0 18px 40px rgba(0,0,0,0.5), 0 0 60px rgba(255,255,255,0.05)"
@@ -264,6 +294,8 @@ export default function App() {
                   : currentToast.appType === "spotify"
                   ? "0 18px 40px rgba(0,0,0,0.5), 0 0 50px rgba(30,215,96,0.12)"
                   : "0 18px 40px rgba(0,0,0,0.5), 0 0 50px rgba(255,255,255,0.06)"
+                : !isExpanded && robotMood === "sad"
+                ? "0 18px 40px rgba(0,0,0,0.5), 0 0 50px rgba(255,159,46,0.12)"
                 : undefined,
           }}
           className={`
@@ -335,6 +367,8 @@ export default function App() {
               bluetoothEvent={bluetoothEvent}
               onDismissBluetooth={dismissBluetooth}
               pomodoro={pomodoro}
+              cursor={cursor}
+              mood={robotMood}
             />
           )}
         </div>

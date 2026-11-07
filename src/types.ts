@@ -47,6 +47,16 @@ export interface CallInfo {
   durationSec: number;
   isMuted: boolean;
   notifId?: number;
+  errorText?: string;
+}
+
+export type RobotMood = "normal" | "sleepy" | "sad";
+
+export interface CursorState {
+  tx: number;
+  ty: number;
+  sc: number;
+  isIdle: boolean;
 }
 
 export interface BluetoothDeviceEvent {

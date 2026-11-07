@@ -458,12 +458,35 @@ fn get_all_communication_hwnds() -> Vec<windows::Win32::Foundation::HWND> {
     FOUND_HWNDS.lock().unwrap().iter().map(|&h| HWND(h as *mut _)).collect()
 }
 
+// Cocok sebagai substring — cukup spesifik untuk tidak salah sasaran.
 #[cfg(windows)]
-fn try_click_call_button(keywords: &[&str]) -> bool {
+const HANGUP_STRONG: &[&str] = &[
+    "akhiri panggilan", "end call", "endcall", "hangup", "hang up",
+    "leave call", "leavecall", "disconnect", "tinggalkan", "matikan",
+    "tolak", "decline", "reject", "putuskan",
+];
+
+// Hanya cocok sebagai kata utuh — "end" tidak boleh cocok ke "Send", "hang" ke "change".
+#[cfg(windows)]
+const HANGUP_WEAK: &[&str] = &["akhiri", "end", "hang", "leave", "tutup", "batal", "selesai"];
+
+#[cfg(windows)]
+const ACCEPT_KEYWORDS: &[&str] = &["terima", "accept", "jawab", "answer", "join", "gabung"];
+
+#[cfg(windows)]
+fn keyword_matches(text: &str, kw: &str, whole_word: bool) -> bool {
+    if !whole_word {
+        return text.contains(kw);
+    }
+    text.split(|c: char| !c.is_alphanumeric()).any(|t| t == kw)
+}
+
+#[cfg(windows)]
+fn try_click_call_button(keywords: &[&str], whole_word: bool) -> bool {
     use windows::Win32::System::Com::{CoInitializeEx, CoCreateInstance, COINIT_MULTITHREADED, CLSCTX_INPROC_SERVER};
     use windows::Win32::UI::Accessibility::{
         CUIAutomation, IUIAutomation, IUIAutomationInvokePattern,
-        TreeScope_Descendants, UIA_InvokePatternId,
+        TreeScope_Descendants, UIA_InvokePatternId, UIA_ButtonControlTypeId,
     };
     use windows::Win32::UI::WindowsAndMessaging::{SetCursorPos, GetCursorPos, ShowWindow, SetForegroundWindow, SW_RESTORE, IsWindow};
     use windows::Win32::Foundation::{HWND, POINT};
@@ -510,12 +533,27 @@ fn try_click_call_button(keywords: &[&str]) -> bool {
                     let len = children.Length().unwrap_or(0);
                     for i in 0..len {
                         if let Ok(child) = children.GetElement(i) {
+                            // Buang teks statis/label: hanya tombol, atau elemen yang
+                            // benar-benar bisa di-invoke, yang boleh ikut diklik.
+                            let is_button = child
+                                .CurrentControlType()
+                                .map(|t| t == UIA_ButtonControlTypeId)
+                                .unwrap_or(false);
+                            let invoker = child
+                                .GetCurrentPatternAs::<IUIAutomationInvokePattern>(UIA_InvokePatternId)
+                                .ok();
+                            if !is_button && invoker.is_none() {
+                                continue;
+                            }
+
                             let name = child.CurrentName().map(|s| s.to_string().to_lowercase()).unwrap_or_default();
                             let auto_id = child.CurrentAutomationId().map(|s| s.to_string().to_lowercase()).unwrap_or_default();
                             let help = child.CurrentHelpText().map(|s| s.to_string().to_lowercase()).unwrap_or_default();
 
                             let matches = keywords.iter().any(|&k| {
-                                name.contains(k) || auto_id.contains(k) || help.contains(k)
+                                keyword_matches(&name, k, whole_word)
+                                    || keyword_matches(&auto_id, k, whole_word)
+                                    || keyword_matches(&help, k, whole_word)
                             });
 
                             if matches {
@@ -525,7 +563,7 @@ fn try_click_call_button(keywords: &[&str]) -> bool {
                                 std::thread::sleep(std::time::Duration::from_millis(30));
 
                                 // 1. Try IUIAutomationInvokePattern
-                                if let Ok(invoker) = child.GetCurrentPatternAs::<IUIAutomationInvokePattern>(UIA_InvokePatternId) {
+                                if let Some(invoker) = invoker {
                                     if invoker.Invoke().is_ok() {
                                         return true;
                                     }
@@ -561,8 +599,7 @@ fn try_click_call_button(keywords: &[&str]) -> bool {
 #[cfg(windows)]
 pub fn answer_system_call() -> Result<(), String> {
     // 1. Try UI Automation first (clicks exact "Terima" / "Accept" button in WhatsApp or Toast)
-    let keywords = &["terima", "accept", "jawab", "answer", "join", "gabung"];
-    if try_click_call_button(keywords) {
+    if try_click_call_button(ACCEPT_KEYWORDS, false) {
         return Ok(());
     }
 
@@ -589,70 +626,63 @@ pub fn answer_system_call() -> Result<(), String> {
 }
 
 #[cfg(windows)]
-pub fn decline_or_end_system_call() -> Result<(), String> {
+pub fn decline_or_end_system_call(declining: bool) -> Result<(), String> {
     use windows::Win32::UI::WindowsAndMessaging::{ShowWindow, SetForegroundWindow, SW_RESTORE, PostMessageW, WM_CLOSE, GetWindowTextW};
     use windows::Win32::Foundation::{WPARAM, LPARAM};
 
-    // 1. Try UI Automation first: searches for End / Hangup / Decline / Leave buttons
-    let keywords = &[
-        "akhiri", "end", "hang", "leave", "tinggalkan", "disconnect",
-        "tolak", "decline", "reject", "tutup", "batal", "selesai", "putus"
-    ];
-    if try_click_call_button(keywords) {
+    // 1. UI Automation, dua tahap: kata kunci spesifik dulu, baru kata utuh.
+    // Saat masih berdering tombolnya berlabel Tolak/Decline; saat tersambung Akhiri/Hang up.
+    // Keduanya ada di HANGUP_STRONG, jadi urutannya hanya soal prioritas.
+    let strong: &[&str] = if declining {
+        &["tolak", "decline", "reject", "akhiri panggilan", "end call", "endcall",
+          "hangup", "hang up", "leave call", "leavecall", "disconnect", "tinggalkan", "matikan", "putuskan"]
+    } else {
+        HANGUP_STRONG
+    };
+    if try_click_call_button(strong, false) || try_click_call_button(HANGUP_WEAK, true) {
         if let Ok(mut lock) = LAST_CALL_HWND.lock() {
             *lock = None;
         }
         return Ok(());
     }
 
-    // 2. Fallback: Find candidate communication windows and send WM_CLOSE to dedicated call windows
-    let comm_hwnds = get_all_communication_hwnds();
-    for h in &comm_hwnds {
+    // 2. Fallback: tutup jendela panggilan khusus via WM_CLOSE.
+    // Jangan pernah menutup jendela utama WhatsApp/Telegram — itu bisa membunuh app user.
+    let call_hwnd = LAST_CALL_HWND.lock().ok().and_then(|l| *l);
+    for h in get_all_communication_hwnds() {
         let mut title_buf = [0u16; 256];
-        let len = unsafe { GetWindowTextW(*h, &mut title_buf) };
+        let len = unsafe { GetWindowTextW(h, &mut title_buf) };
         let title = String::from_utf16_lossy(&title_buf[..len as usize]).to_lowercase();
 
-        // If this window is a dedicated call window (title has "call", "panggilan", or contact name != "whatsapp")
-        let is_call_window = title.contains("call") || title.contains("panggilan") || title.contains("voice") || title.contains("video");
-        if is_call_window {
+        let looks_like_call = title.contains("call")
+            || title.contains("panggilan")
+            || title.contains("voice")
+            || title.contains("video");
+        // Setelah panggilan diangkat judulnya sering jadi hanya nama kontak,
+        // jadi jendela yang dulu terdeteksi sebagai jendela panggilan juga diterima —
+        // selama judulnya bukan nama aplikasi utamanya.
+        let is_previous_call_window = call_hwnd == Some(h.0 as isize)
+            && !title.is_empty()
+            && title != "whatsapp"
+            && title != "telegram"
+            && title != "discord"
+            && title != "phone link";
+
+        if looks_like_call || is_previous_call_window {
             unsafe {
-                let _ = ShowWindow(*h, SW_RESTORE);
-                let _ = SetForegroundWindow(*h);
+                let _ = ShowWindow(h, SW_RESTORE);
+                let _ = SetForegroundWindow(h);
                 std::thread::sleep(std::time::Duration::from_millis(40));
-
-                // Send WM_CLOSE to terminate the call window
-                let _ = PostMessageW(*h, WM_CLOSE, WPARAM(0), LPARAM(0));
+                let _ = PostMessageW(h, WM_CLOSE, WPARAM(0), LPARAM(0));
             }
+            if let Ok(mut lock) = LAST_CALL_HWND.lock() {
+                *lock = None;
+            }
+            return Ok(());
         }
     }
 
-    // 3. Fallback: Send WhatsApp global hangup hotkey (Ctrl + Shift + H) & Escape
-    for h in &comm_hwnds {
-        unsafe {
-            let _ = ShowWindow(*h, SW_RESTORE);
-            let _ = SetForegroundWindow(*h);
-            std::thread::sleep(std::time::Duration::from_millis(40));
-
-            // Send Ctrl + Shift + H
-            keybd_event(0x11, 0, 0, 0); // VK_CONTROL down
-            keybd_event(0x10, 0, 0, 0); // VK_SHIFT down
-            keybd_event(0x48, 0, 0, 0); // 'H' down
-            keybd_event(0x48, 0, 2, 0); // 'H' up
-            keybd_event(0x10, 0, 2, 0); // VK_SHIFT up
-            keybd_event(0x11, 0, 2, 0); // VK_CONTROL up
-
-            // Send Escape
-            keybd_event(0x1B, 0, 0, 0);
-            keybd_event(0x1B, 0, 2, 0);
-        }
-        break; // Only send hotkey to primary communication window
-    }
-
-    if let Ok(mut lock) = LAST_CALL_HWND.lock() {
-        *lock = None;
-    }
-
-    Ok(())
+    Err("Tombol hangup tidak ditemukan di aplikasi panggilan".to_string())
 }
 
 #[cfg(not(windows))]
@@ -666,6 +696,35 @@ pub fn answer_system_call() -> Result<(), String> {
 }
 
 #[cfg(not(windows))]
-pub fn decline_or_end_system_call() -> Result<(), String> {
+pub fn decline_or_end_system_call(_declining: bool) -> Result<(), String> {
     Ok(())
+}
+
+#[cfg(all(test, windows))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn whole_word_does_not_match_inside_send() {
+        // Bug asli: "end" cocok ke "Send" lewat contains() sehingga tombol Kirim diklik.
+        assert!(!keyword_matches("send", "end", true));
+        assert!(!keyword_matches("change", "hang", true));
+        // Kata utuh tetap cocok.
+        assert!(keyword_matches("end call", "end", true));
+        assert!(keyword_matches("hang up", "hang", true));
+    }
+
+    #[test]
+    fn strong_keywords_stay_substring_matched() {
+        assert!(keyword_matches("akhiri panggilan", "akhiri panggilan", false));
+        assert!(keyword_matches("hangup-button", "hangup", false));
+    }
+
+    #[test]
+    fn strong_and_weak_keyword_sets_are_disjoint_in_intent() {
+        // Kata-kata lemah harus selalu diuji whole-word; kata kuat boleh substring.
+        for k in HANGUP_WEAK {
+            assert!(!HANGUP_STRONG.contains(k), "{} ada di kedua daftar", k);
+        }
+    }
 }

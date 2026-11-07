@@ -6,6 +6,10 @@ import { CallInfo, AppNotification } from "../types";
 export function useCall() {
   const [call, setCall] = useState<CallInfo | null>(null);
   const timerRef = useRef<number | null>(null);
+  // Backend poll masih melaporkan panggilan sebagai "incoming" selama jendelanya terbuka.
+  // Setelah user menutup overlay, abaikan laporan itu sebentar agar overlay tidak muncul lagi.
+  const suppressUntilRef = useRef<number>(0);
+  const isSuppressed = () => Date.now() < suppressUntilRef.current;
 
   // Active call duration timer: ONLY runs if user explicitly accepted the call (state === "active")
   useEffect(() => {
@@ -60,6 +64,7 @@ export function useCall() {
     // 2. Listen to direct call-state-changed event from Rust backend
     listen<any>("call-state-changed", (event) => {
       if (event.payload) {
+        if (isSuppressed()) return;
         const payload = event.payload;
         setCall((prev) => {
           // If the user already accepted the call locally in Boring Notch, keep it active
@@ -110,6 +115,7 @@ export function useCall() {
         const callNotif = notifs.find((n) => n.isCall);
 
         if (callNotif) {
+          if (isSuppressed()) return;
           setCall((prev) => {
             // Keep active if user already accepted
             if (prev && prev.state === "active") {
@@ -188,6 +194,7 @@ export function useCall() {
   }, []);
 
   const declineCall = useCallback(() => {
+    suppressUntilRef.current = Date.now() + 3000;
     invoke("decline_system_call").catch((err) => {
       console.warn("decline_system_call:", err);
     });
@@ -195,20 +202,25 @@ export function useCall() {
   }, []);
 
   const endCall = useCallback(() => {
-    invoke("end_system_call").catch((err) => {
-      console.warn("end_system_call:", err);
-    });
-    setCall((prev) => {
-      if (!prev) return null;
-      return {
-        ...prev,
-        state: "ended",
-      };
-    });
-    // Return smoothly to normal after 600ms
-    setTimeout(() => {
-      setCall(null);
-    }, 600);
+    invoke("end_system_call")
+      .then(() => {
+        // Overlay hanya ditutup kalau panggilan di app sumber benar-benar berakhir.
+        suppressUntilRef.current = Date.now() + 3000;
+        setCall((prev) => (prev ? { ...prev, state: "ended" } : null));
+        // Return smoothly to normal after 600ms
+        setTimeout(() => {
+          setCall(null);
+        }, 600);
+      })
+      .catch((err) => {
+        // Gagal menutup: overlay tetap aktif + tampilkan alasan, jangan diam-diam no-op.
+        console.warn("end_system_call:", err);
+        const msg = "Gagal mengakhiri. Tutup manual di aplikasi.";
+        setCall((prev) => (prev ? { ...prev, errorText: msg } : null));
+        setTimeout(() => {
+          setCall((prev) => (prev && prev.errorText === msg ? { ...prev, errorText: undefined } : prev));
+        }, 4000);
+      });
   }, []);
 
   const toggleMute = useCallback(() => {

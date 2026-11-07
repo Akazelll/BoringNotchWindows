@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
-import { MediaInfo, BatteryInfo, SystemStats, AppNotification, BluetoothDeviceEvent } from "../types";
+import { MediaInfo, BatteryInfo, SystemStats, AppNotification, BluetoothDeviceEvent, CursorState, RobotMood } from "../types";
 import { AppSourceBadge } from "./AppSourceBadge";
+import { RobotEyes } from "./RobotEyes";
 import { PomodoroController } from "../hooks/usePomodoro";
 import { Timer } from "lucide-react";
 
@@ -13,6 +14,8 @@ interface CompactPillProps {
   bluetoothEvent?: BluetoothDeviceEvent | null;
   onDismissBluetooth?: () => void;
   pomodoro?: PomodoroController;
+  cursor: CursorState;
+  mood: RobotMood;
 }
 
 export const CompactPill: React.FC<CompactPillProps> = ({
@@ -20,6 +23,8 @@ export const CompactPill: React.FC<CompactPillProps> = ({
   battery,
   stats: _stats,
   pomodoro,
+  cursor,
+  mood,
 }) => {
   const [timeStr, setTimeStr] = useState<string>("");
 
@@ -143,56 +148,12 @@ export const CompactPill: React.FC<CompactPillProps> = ({
       );
     }
 
-    // ─── 3. DEFAULT IDLE MODE (Jam + Baterai Pill) ───
-    const barWidth = Math.min(10.5, Math.max(1.5, (battery.level / 100) * 10.5));
-
+    // ─── 3. DEFAULT IDLE MODE (Wajah robot) ───
+    // Jam + baterai sengaja disembunyikan di sini; keduanya masih tampil saat ada media
+    // berjalan dan lengkap di ExpandedCard begitu notch di-hover.
     return (
-      <div
-        style={{
-          width: "100%",
-          height: "100%",
-          boxSizing: "border-box",
-          padding: "0 12px 0 14px",
-          display: "flex",
-          flexDirection: "row",
-          alignItems: "center",
-          justifyContent: "space-between",
-        }}
-        className="select-none animate-in fade-in duration-200"
-      >
-        <div style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#a1a1aa" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <circle cx="12" cy="12" r="9" />
-            <path d="M12 7v5l3 2" />
-          </svg>
-          <span style={{ fontSize: "14px", fontWeight: 600, color: "#ffffff", letterSpacing: "-0.01em", fontVariantNumeric: "tabular-nums" }}>
-            {timeStr}
-          </span>
-        </div>
-
-        <div
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: "5px",
-            height: "23px",
-            boxSizing: "border-box",
-            padding: "0 8px 0 7px",
-            borderRadius: "999px",
-            background: "rgba(255,255,255,0.07)",
-            fontSize: "11.5px",
-            fontWeight: 600,
-            color: "#ffffff",
-            fontVariantNumeric: "tabular-nums",
-          }}
-        >
-          <svg width="16" height="9" viewBox="0 0 20 12" fill="none" aria-hidden="true">
-            <rect x="0.5" y="0.5" width="16" height="11" rx="3" stroke="#a1a1aa" />
-            <rect x="2" y="2" width={barWidth} height="8" rx="1.8" fill="#5AA2FF" />
-            <rect x="17.5" y="4" width="2" height="4" rx="1" fill="#a1a1aa" />
-          </svg>
-          <span>{battery.level}%</span>
-        </div>
+      <div style={{ width: "100%", height: "100%", boxSizing: "border-box" }} className="select-none">
+        <RobotEyes mood={mood} tx={cursor.tx} ty={cursor.ty} sc={cursor.sc} />
       </div>
     );
   };

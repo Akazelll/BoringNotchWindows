@@ -1,5 +1,6 @@
-import React, { useState } from "react";
+import React from "react";
 import { CallInfo } from "../types";
+import { formatDuration, getInitials, getAppMeta } from "../utils/callDisplay";
 
 interface CallExpandedCardProps {
   call: CallInfo;
@@ -10,42 +11,52 @@ interface CallExpandedCardProps {
   onToggleMute: () => void;
 }
 
-function formatDuration(sec: number): string {
-  const m = Math.floor(sec / 60);
-  const s = sec % 60;
-  return `${m < 10 ? "0" : ""}${m}:${s < 10 ? "0" : ""}${s}`;
-}
+// Path gagang telepon yang sama dipakai di semua tombol panggilan; rotasi yang membedakan.
+const PHONE_PATH =
+  "M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.25 11.4 11.4 0 0 0 3.6.57 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.45.57 3.57a1 1 0 0 1-.25 1z";
 
-function getInitials(name: string): string {
-  if (!name) return "AP";
-  const parts = name.trim().split(/\s+/);
-  if (parts.length === 1) {
-    return parts[0].slice(0, 2).toUpperCase();
-  }
-  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-}
+const iconBtnStyle = (background: string, boxShadow?: string): React.CSSProperties => ({
+  width: "42px",
+  height: "42px",
+  flexShrink: 0,
+  borderRadius: "50%",
+  border: "none",
+  background,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: 0,
+  cursor: "pointer",
+  boxShadow,
+});
 
-function getAppHeader(appSource: string): string {
-  const s = (appSource || "").toLowerCase();
-  if (s.includes("whatsapp")) return "WhatsApp · Panggilan suara";
-  if (s.includes("telegram")) return "Telegram · Panggilan suara";
-  if (s.includes("discord")) return "Discord · Panggilan suara";
-  if (s.includes("teams")) return "Teams · Panggilan suara";
-  return "Telepon · Panggilan suara";
-}
-
+// Referensi: CallStates.dc.html — state "Standar" dan "Standar, dibisukan" (380x74).
 export const CallExpandedCard: React.FC<CallExpandedCardProps> = ({
   call,
-  username: _username = "User",
   onAccept,
   onDecline,
   onEnd,
   onToggleMute,
 }) => {
-  const [isSpeakerOn, setIsSpeakerOn] = useState<boolean>(false);
   const isIncoming = call.state === "incoming";
   const initials = getInitials(call.callerName);
-  const appHeader = getAppHeader(call.appSource);
+  const app = getAppMeta(call.appSource);
+
+  // Baris kedua: prioritas error > dering > bisu > durasi biasa.
+  const subtitle = call.errorText ? (
+    <span style={{ color: "#FF453A" }}>{call.errorText}</span>
+  ) : isIncoming ? (
+    <span style={{ color: "#30D158" }}>Panggilan masuk</span>
+  ) : call.isMuted ? (
+    <span style={{ color: "#FF9F0A" }}>
+      <span style={{ fontVariantNumeric: "tabular-nums" }}>{formatDuration(call.durationSec)}</span>
+      {" · Mikrofon mati"}
+    </span>
+  ) : (
+    <span style={{ color: "#30D158", fontVariantNumeric: "tabular-nums" }}>
+      {formatDuration(call.durationSec)}
+    </span>
+  );
 
   return (
     <div
@@ -53,29 +64,28 @@ export const CallExpandedCard: React.FC<CallExpandedCardProps> = ({
         width: "100%",
         height: "100%",
         boxSizing: "border-box",
-        padding: "24px 28px 24px 28px",
+        padding: "0 16px 0 14px",
         background: "#09090b",
         display: "flex",
-        flexDirection: "column",
-        justifyContent: "space-between",
+        flexDirection: "row",
+        alignItems: "center",
+        gap: "12px",
         fontFamily: "'Inter', -apple-system, 'SF Pro Display', system-ui, sans-serif",
       }}
-      className="animate-in fade-in duration-200 select-none"
+      className="select-none"
     >
-      {/* ─── 1. TOP ROW: AVATAR + CALLER DETAIL + STATUS PILL ─── */}
-      <div style={{ display: "flex", flexDirection: "row", alignItems: "center", gap: "14px" }}>
-        {/* Avatar 48x48px with Initials */}
+      {/* Avatar 46px + badge status aplikasi */}
+      <div style={{ position: "relative", width: "46px", height: "46px", flexShrink: 0 }}>
         <div
           style={{
-            width: "48px",
-            height: "48px",
-            flexShrink: 0,
+            width: "46px",
+            height: "46px",
             borderRadius: "50%",
             background: "linear-gradient(145deg, #3a3f4b 0%, #1d2028 100%)",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            fontSize: "17px",
+            fontSize: "16px",
             fontWeight: 600,
             color: "#e4e4e7",
             boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.14)",
@@ -85,260 +95,136 @@ export const CallExpandedCard: React.FC<CallExpandedCardProps> = ({
           {initials}
         </div>
 
-        {/* Caller Name & Subtitle */}
-        <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: "2px" }}>
-          <div
-            style={{
-              fontSize: "18px",
-              fontWeight: 700,
-              lineHeight: 1.2,
-              color: "#ffffff",
-              letterSpacing: "-0.015em",
-              whiteSpace: "nowrap",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-            }}
-          >
-            {call.callerName || "Andi Pratama"}
-          </div>
-          <div
-            style={{
-              fontSize: "12px",
-              fontWeight: 600,
-              letterSpacing: "0.04em",
-              textTransform: "uppercase",
-              color: "#30D158",
-            }}
-          >
-            {appHeader}
-          </div>
-        </div>
-
-        {/* Status Pill: Terhubung (Active) or Memanggil (Incoming) */}
         <div
           style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: "7px",
-            height: "30px",
+            position: "absolute",
+            right: "-3px",
+            bottom: "-3px",
+            width: "20px",
+            height: "20px",
             boxSizing: "border-box",
-            padding: "0 13px 0 11px",
-            borderRadius: "999px",
-            background: "rgba(48,209,88,0.16)",
-            fontSize: "13px",
-            fontWeight: 600,
-            color: "#30D158",
-            flexShrink: 0,
+            borderRadius: "50%",
+            background: isIncoming || !call.isMuted ? app.color : "#FF9F0A",
+            border: "2.5px solid #09090b",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
           }}
+          className={isIncoming ? "animate-pulse" : undefined}
+          aria-hidden="true"
         >
-          <div
-            style={{
-              width: "7px",
-              height: "7px",
-              borderRadius: "50%",
-              background: "#30D158",
-            }}
-            className="animate-pulse"
-            aria-hidden="true"
-          />
-          <span>{isIncoming ? "Memanggil..." : "Terhubung"}</span>
+          {call.isMuted && !isIncoming ? (
+            <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#2a1700" strokeWidth="3.2" strokeLinecap="round">
+              <path d="M4 4l16 16" />
+              <rect x="9" y="3" width="6" height="11" rx="3" />
+            </svg>
+          ) : (
+            <svg width="9" height="9" viewBox="0 0 24 24" fill="#04210d">
+              <path d={PHONE_PATH} />
+            </svg>
+          )}
         </div>
       </div>
 
-      {/* ─── 2. CENTER SECTION: GIANT 60PX DURATION DISPLAY + SUBTEXT ─── */}
-      <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          gap: "4px",
-          padding: "14px 0 12px 0",
-          borderTop: "1px solid rgba(255,255,255,0.08)",
-        }}
-      >
+      {/* Nama + baris status */}
+      <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: "2px" }}>
         <div
           style={{
-            fontSize: "60px",
-            fontWeight: 600,
-            lineHeight: 1.05,
+            fontSize: "15px",
+            fontWeight: 700,
             color: "#ffffff",
-            letterSpacing: "-0.03em",
-            fontVariantNumeric: "tabular-nums",
+            letterSpacing: "-0.01em",
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
           }}
         >
-          {isIncoming ? "00:00" : formatDuration(call.durationSec)}
+          {call.callerName || "Panggilan"}
         </div>
-        <div style={{ fontSize: "13px", fontWeight: 500, color: "#a1a1aa" }}>
-          {isIncoming
-            ? "Panggilan suara masuk"
-            : call.isMuted
-            ? "Mikrofon dimatikan"
-            : "Panggilan suara aktif"}
-        </div>
+        <div style={{ fontSize: "13px", fontWeight: 600, whiteSpace: "nowrap" }}>{subtitle}</div>
       </div>
 
-      {/* ─── 3. BOTTOM SECTION: 56PX ACTION BUTTONS ─── */}
       {isIncoming ? (
-        /* INCOMING CALL BUTTONS: Tolak (56px bulat merah) + Terima (210px pill hijau) */
-        <div style={{ display: "flex", flexDirection: "row", alignItems: "center", justifyContent: "center", gap: "16px" }}>
-          {/* Tolak Button */}
+        <>
           <button
             onClick={(e) => {
               e.stopPropagation();
               onDecline();
             }}
             aria-label="Tolak panggilan"
-            style={{
-              width: "56px",
-              height: "56px",
-              flexShrink: 0,
-              borderRadius: "50%",
-              border: "none",
-              background: "#FF453A",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              padding: 0,
-              boxShadow: "0 8px 24px rgba(255,69,58,0.32)",
-              cursor: "pointer",
-            }}
-            className="active:scale-95 transition"
             title="Tolak Panggilan"
+            style={iconBtnStyle("#FF453A")}
+            className="active:scale-95 transition"
           >
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="#ffffff" aria-hidden="true" style={{ transform: "rotate(135deg)" }}>
-              <path d="M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.25 11.4 11.4 0 0 0 3.6.57 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.45.57 3.57a1 1 0 0 1-.25 1z" />
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="#ffffff" aria-hidden="true" style={{ transform: "rotate(135deg)" }}>
+              <path d={PHONE_PATH} />
             </svg>
           </button>
 
-          {/* Terima Button */}
           <button
             onClick={(e) => {
               e.stopPropagation();
               onAccept();
             }}
             aria-label="Terima panggilan"
-            style={{
-              flex: "0 0 210px",
-              height: "56px",
-              borderRadius: "999px",
-              border: "none",
-              background: "#30D158",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: "10px",
-              padding: 0,
-              color: "#ffffff",
-              fontSize: "16px",
-              fontWeight: 600,
-              letterSpacing: "-0.01em",
-              boxShadow: "0 8px 24px rgba(48,209,88,0.32)",
-              cursor: "pointer",
-            }}
-            className="active:scale-95 transition"
             title="Terima Panggilan"
+            style={iconBtnStyle("#30D158")}
+            className="active:scale-95 transition"
           >
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="#ffffff" aria-hidden="true">
-              <path d="M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.25 11.4 11.4 0 0 0 3.6.57 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.45.57 3.57a1 1 0 0 1-.25 1z" />
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="#ffffff" aria-hidden="true">
+              <path d={PHONE_PATH} />
             </svg>
-            Terima
           </button>
-        </div>
+        </>
       ) : (
-        /* ACTIVE CALL BUTTONS: Bisukan (56px) + Akhiri (190px pill merah) + Speaker (56px) */
-        <div style={{ display: "flex", flexDirection: "row", alignItems: "center", justifyContent: "center", gap: "16px" }}>
-          {/* Mute Button */}
+        <>
+          {/* Saat bisu tombol jadi putih — motif referensi, bukan tombol terpisah */}
           <button
             onClick={(e) => {
               e.stopPropagation();
               onToggleMute();
             }}
             aria-label={call.isMuted ? "Aktifkan mikrofon" : "Bisukan mikrofon"}
-            style={{
-              width: "56px",
-              height: "56px",
-              flexShrink: 0,
-              borderRadius: "50%",
-              border: call.isMuted ? "1px solid rgba(255,69,58,0.4)" : "none",
-              background: call.isMuted ? "rgba(255,69,58,0.2)" : "rgba(255,255,255,0.09)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              padding: 0,
-              cursor: "pointer",
-            }}
-            className="active:scale-95 transition"
+            aria-pressed={call.isMuted}
             title={call.isMuted ? "Aktifkan Mikrofon" : "Bisukan Mikrofon"}
+            style={iconBtnStyle(call.isMuted ? "#ffffff" : "rgba(255,255,255,0.1)")}
+            className="active:scale-95 transition"
           >
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={call.isMuted ? "#FF453A" : "#ffffff"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke={call.isMuted ? "#09090b" : "#ffffff"}
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
               <rect x="9" y="3" width="6" height="11" rx="3" />
-              <path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21" />
+              {call.isMuted ? (
+                <path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21M3.5 3.5l17 17" />
+              ) : (
+                <path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21" />
+              )}
             </svg>
           </button>
 
-          {/* Akhiri Call Button Pill */}
           <button
             onClick={(e) => {
               e.stopPropagation();
               onEnd();
             }}
             aria-label="Akhiri panggilan"
-            style={{
-              flex: "0 0 190px",
-              height: "56px",
-              borderRadius: "999px",
-              border: "none",
-              background: "#FF453A",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: "10px",
-              padding: 0,
-              color: "#ffffff",
-              fontSize: "16px",
-              fontWeight: 600,
-              letterSpacing: "-0.01em",
-              boxShadow: "0 8px 24px rgba(255,69,58,0.32)",
-              cursor: "pointer",
-            }}
-            className="active:scale-95 transition"
             title="Akhiri Panggilan"
-          >
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="#ffffff" aria-hidden="true" style={{ transform: "rotate(135deg)" }}>
-              <path d="M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.25 11.4 11.4 0 0 0 3.6.57 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.45.57 3.57a1 1 0 0 1-.25 1z" />
-            </svg>
-            Akhiri
-          </button>
-
-          {/* Speaker Button */}
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              setIsSpeakerOn((prev) => !prev);
-            }}
-            aria-label="Pengeras suara"
-            style={{
-              width: "56px",
-              height: "56px",
-              flexShrink: 0,
-              borderRadius: "50%",
-              border: isSpeakerOn ? "1px solid rgba(48,209,88,0.4)" : "none",
-              background: isSpeakerOn ? "rgba(48,209,88,0.2)" : "rgba(255,255,255,0.09)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              padding: 0,
-              cursor: "pointer",
-            }}
+            style={iconBtnStyle("#FF453A", "0 6px 16px rgba(255,69,58,0.32)")}
             className="active:scale-95 transition"
-            title={isSpeakerOn ? "Speaker Aktif" : "Aktifkan Speaker"}
           >
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={isSpeakerOn ? "#30D158" : "#ffffff"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <path d="M4 9.5v5h3.5L12 18.5v-13L7.5 9.5z" />
-              <path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11" />
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="#ffffff" aria-hidden="true" style={{ transform: "rotate(135deg)" }}>
+              <path d={PHONE_PATH} />
             </svg>
           </button>
-        </div>
+        </>
       )}
     </div>
   );
