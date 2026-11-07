@@ -124,6 +124,7 @@ fn trigger_notification_test(app_name: Option<String>, title: Option<String>, me
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_sql::Builder::default().build())
         .setup(|app| {
             // Position window at top-center on launch (flush against the top edge)
             if let Some(window) = app.get_webview_window("main") {

@@ -1,5 +1,6 @@
 import type { LyricLine } from "../../../shared/types";
 import { parseLrc } from "./lrcParser";
+import { getDb, LYRICS_CACHE_LIMIT } from "../../../shared/lib/db";
 
 interface LrcLibResponse {
   id?: number;
@@ -15,10 +16,40 @@ export interface CachedLyrics {
   plainLyrics: string | null;
 }
 
-// In-memory module cache: persists across component unmount/remount (closing & reopening hover)
+// L1: in-memory, dibaca sinkron saat render. Diisi dari SQLite sekali saat boot.
 const lyricsCache = new Map<string, CachedLyrics>();
 const inFlightFetches = new Map<string, Promise<CachedLyrics>>();
-const LRC_STORAGE_PREFIX = "boring_lrc_v2_";
+
+interface LyricsRow {
+  cache_key: string;
+  lyrics_json: string;
+  plain_lyrics: string | null;
+}
+
+/**
+ * Muat semua lirik dari SQLite ke L1. Dipanggil sekali saat boot, tanpa await,
+ * supaya lagu yang diputar offline tetap punya lirik tanpa menyentuh jaringan.
+ */
+export async function hydrateLyricsCache(): Promise<void> {
+  try {
+    const db = await getDb();
+    const rows = await db.select<LyricsRow[]>(
+      "SELECT cache_key, lyrics_json, plain_lyrics FROM lyrics"
+    );
+    for (const row of rows) {
+      try {
+        const lyrics = JSON.parse(row.lyrics_json);
+        if (Array.isArray(lyrics)) {
+          lyricsCache.set(row.cache_key, { lyrics, plainLyrics: row.plain_lyrics });
+        }
+      } catch {
+        // baris rusak: lewati, biarkan dihapus oleh prune berikutnya
+      }
+    }
+  } catch {
+    // DB gagal dibuka: aplikasi tetap jalan, lirik diambil dari jaringan
+  }
+}
 
 export function getLyricsCacheKey(title: string, artist: string): string {
   if (!title) return "";
@@ -29,31 +60,40 @@ export function getLyricsCacheKey(title: string, artist: string): string {
 
 export function getCachedLyrics(key: string): CachedLyrics | null {
   if (!key) return null;
-  if (lyricsCache.has(key)) {
-    return lyricsCache.get(key)!;
-  }
-  try {
-    const raw = localStorage.getItem(LRC_STORAGE_PREFIX + key);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (parsed && Array.isArray(parsed.lyrics)) {
-        lyricsCache.set(key, parsed);
-        return parsed;
-      }
-    }
-  } catch {
-    // Ignore storage parse error
-  }
-  return null;
+  return lyricsCache.get(key) ?? null;
 }
 
 export function setCachedLyrics(key: string, data: CachedLyrics) {
   if (!key) return;
+  // Jangan simpan hasil kosong: fetch gagal saat offline tidak boleh menimpa
+  // baris DB yang bagus maupun memakan kuota LYRICS_CACHE_LIMIT.
+  if (data.lyrics.length === 0 && !data.plainLyrics) return;
+
   lyricsCache.set(key, data);
+  void persistLyrics(key, data);
+}
+
+async function persistLyrics(key: string, data: CachedLyrics) {
   try {
-    localStorage.setItem(LRC_STORAGE_PREFIX + key, JSON.stringify(data));
+    const db = await getDb();
+    await db.execute(
+      `INSERT INTO lyrics (cache_key, lyrics_json, plain_lyrics, updated_at)
+       VALUES (?, ?, ?, ?)
+       ON CONFLICT(cache_key) DO UPDATE SET
+         lyrics_json = excluded.lyrics_json,
+         plain_lyrics = excluded.plain_lyrics,
+         updated_at = excluded.updated_at`,
+      [key, JSON.stringify(data.lyrics), data.plainLyrics, Date.now()]
+    );
+    // Simpan hanya N lagu terbaru.
+    await db.execute(
+      `DELETE FROM lyrics WHERE cache_key NOT IN (
+         SELECT cache_key FROM lyrics ORDER BY updated_at DESC LIMIT ?
+       )`,
+      [LYRICS_CACHE_LIMIT]
+    );
   } catch {
-    // Ignore quota errors
+    // Gagal tulis: lirik tetap ada di L1 untuk sesi ini.
   }
 }
 

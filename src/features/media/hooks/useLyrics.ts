@@ -46,7 +46,7 @@ export function useLyrics(media: MediaInfo | null) {
       return;
     }
 
-    // If already in memory or localStorage cache, do not fetch
+    // Sudah ada di cache (L1, hasil hidrasi SQLite), tidak perlu fetch
     if (getCachedLyrics(cacheKey)) {
       setIsLoading(false);
       return;
