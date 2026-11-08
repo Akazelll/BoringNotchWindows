@@ -5,6 +5,7 @@ mod fullscreen;
 mod autostart;
 mod bluetooth;
 mod cursor;
+pub mod migrate;
 
 use cursor::CursorState;
 use media::MediaInfo;
@@ -131,8 +132,8 @@ pub fn run() {
                 if let Ok(Some(monitor)) = window.primary_monitor() {
                     let scale = monitor.scale_factor();
                     let screen_width = monitor.size().width as f64 / scale;
-                    let initial_width = 375.0;
-                    let initial_height = 42.0;
+                    let initial_width = 226.0;
+                    let initial_height = 38.0;
                     let pos_x = (screen_width - initial_width) / 2.0;
                     let _ = window.set_size(tauri::LogicalSize::new(initial_width, initial_height));
                     let _ = window.set_position(tauri::LogicalPosition::new(pos_x, 0.0));
@@ -157,11 +158,12 @@ pub fn run() {
                 &[&op_100, &op_90, &op_75, &op_60, &op_45],
             )?;
 
-            // Startup Toggle Checkbox in Tray
+            // Startup Toggle Checkbox in Tray. Di build dev opsi ini dikelabui: build dev
+            // bergantung pada server Vite, jadi mendaftarkannya sebagai autostart selalu gagal.
             let is_start = autostart::is_autostart_enabled();
-            let autostart_item = CheckMenuItem::with_id(app, "toggle_autostart", "🚀 Jalankan saat Startup", true, is_start, None::<&str>)?;
+            let autostart_item = CheckMenuItem::with_id(app, "toggle_autostart", "🚀 Jalankan saat Startup", !cfg!(dev), is_start, None::<&str>)?;
 
-            let quit_app = MenuItem::with_id(app, "quit", "❌ Keluar dari Boring Notch", true, None::<&str>)?;
+            let quit_app = MenuItem::with_id(app, "quit", "❌ Keluar dari bento", true, None::<&str>)?;
 
             let tray_menu = Menu::with_items(app, &[
                 &show_notch,
@@ -176,7 +178,7 @@ pub fn run() {
             let mut tray_builder = TrayIconBuilder::new()
                 .menu(&tray_menu)
                 .show_menu_on_left_click(false)
-                .tooltip("Boring Notch Windows")
+                .tooltip("bento")
                 .on_menu_event(|app, event| {
                     match event.id.as_ref() {
                         "show_notch" => {
@@ -207,10 +209,13 @@ pub fn run() {
                         }
                         "toggle_autostart" => {
                             let current = autostart::is_autostart_enabled();
-                            if current {
-                                let _ = autostart::disable_autostart();
+                            let result = if current {
+                                autostart::disable_autostart()
                             } else {
-                                let _ = autostart::enable_autostart();
+                                autostart::enable_autostart()
+                            };
+                            if let Err(err) = result {
+                                eprintln!("[bento] autostart gagal diubah: {err}");
                             }
                         }
                         "quit" => {
@@ -393,5 +398,5 @@ pub fn run() {
             end_system_call
         ])
         .run(tauri::generate_context!())
-        .expect("error while running boring-notch");
+        .expect("error while running bento");
 }

@@ -9,7 +9,7 @@ interface RobotEyesProps {
 }
 
 // Nilai diambil dari referensi RobotEyes.dc.html, lalu dikecilkan lagi.
-// Notch referensi setinggi 58px; notch proyek ini hanya 40px — jadi mata sengaja dibuat
+// Notch referensi setinggi 58px; notch proyek ini hanya 38px — jadi mata sengaja dibuat
 // lebih kecil daripada sekadar skala 40/58, supaya ada napas ke tepi atas dan bawah.
 const EYE_W = 17;
 const EYE_H = 21;

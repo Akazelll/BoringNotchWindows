@@ -7,7 +7,9 @@ use windows::Win32::System::Registry::{
 use windows::core::PCWSTR;
 
 const RUN_KEY_PATH: &str = "Software\\Microsoft\\Windows\\CurrentVersion\\Run\0";
-const APP_REG_NAME: &str = "BoringNotch\0";
+const APP_REG_NAME: &str = "Bento\0";
+/// Nilai lama sebelum rebrand. Dipakai sekali oleh `migrate_autostart`.
+pub const OLD_APP_REG_NAME: &str = "BoringNotch\0";
 
 #[cfg(windows)]
 pub fn is_autostart_enabled() -> bool {
@@ -42,6 +44,13 @@ pub fn is_autostart_enabled() -> bool {
 
 #[cfg(windows)]
 pub fn enable_autostart() -> Result<(), String> {
+    // Build dev memuat frontend dari server Vite (`dev_url` = localhost:1420), jadi ia tidak
+    // bisa jalan sendiri saat booting: jendelanya terbuka, halamannya gagal dimuat, dan yang
+    // terlihat hanya konsol debug. Menolak di sini lebih baik daripada mendaftarkan path mati.
+    if cfg!(dev) {
+        return Err("Build dev tidak bisa dijadikan autostart — pakai versi terpasang.".into());
+    }
+
     let current_exe = std::env::current_exe().map_err(|e| e.to_string())?;
     let exe_path_str = format!("\"{}\"", current_exe.to_string_lossy());
     let mut val_bytes: Vec<u8> = Vec::new();
@@ -103,6 +112,57 @@ pub fn disable_autostart() -> Result<(), String> {
             let _ = RegCloseKey(hkey);
         }
     }
+    Ok(())
+}
+
+/// Bawa preferensi autostart dari nama lama (`BoringNotch`) ke nama baru (`Bento`).
+///
+/// Ada = pengguna mengaktifkannya, tidak ada = nonaktif, jadi keberadaan nilai lama sudah cukup
+/// untuk memutuskan. Path-nya ditulis ulang dari `current_exe()` — bukan disalin — karena nilai
+/// lama bisa menunjuk binary yang sudah tidak ada (mis. build debug atau exe pra-rebrand).
+///
+/// Best-effort: setiap kegagalan menghasilkan pesan, tidak pernah panic.
+#[cfg(windows)]
+pub fn migrate_autostart() -> Result<(), String> {
+    unsafe {
+        let path_u16: Vec<u16> = RUN_KEY_PATH.encode_utf16().collect();
+        let old_name_u16: Vec<u16> = OLD_APP_REG_NAME.encode_utf16().collect();
+
+        let mut hkey = HKEY::default();
+        if !RegOpenKeyExW(HKEY_CURRENT_USER, PCWSTR(path_u16.as_ptr()), 0, KEY_READ, &mut hkey).is_ok() {
+            return Ok(());
+        }
+        let old_exists = RegQueryValueExW(
+            hkey,
+            PCWSTR(old_name_u16.as_ptr()),
+            None,
+            None,
+            None,
+            None,
+        )
+        .is_ok();
+        let _ = RegCloseKey(hkey);
+
+        if !old_exists {
+            return Ok(());
+        }
+
+        // Kalau penulisan nilai baru gagal (mis. sedang jalan sebagai build dev), nilai lama
+        // DIBIARKAN supaya preferensi pengguna tidak hilang tanpa jejak.
+        enable_autostart()?;
+
+        let mut hkey = HKEY::default();
+        if RegOpenKeyExW(HKEY_CURRENT_USER, PCWSTR(path_u16.as_ptr()), 0, KEY_WRITE, &mut hkey).is_ok() {
+            let _ = RegDeleteValueW(hkey, PCWSTR(old_name_u16.as_ptr()));
+            let _ = RegCloseKey(hkey);
+        }
+    }
+
+    Ok(())
+}
+
+#[cfg(not(windows))]
+pub fn migrate_autostart() -> Result<(), String> {
     Ok(())
 }
 

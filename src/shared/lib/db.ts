@@ -1,6 +1,6 @@
 import Database from "@tauri-apps/plugin-sql";
 
-const DB_URL = "sqlite:boring-notch.db";
+const DB_URL = "sqlite:bento.db";
 
 // sqlx menolak banyak statement dalam satu execute, jadi dijalankan satu per satu.
 const DDL = [

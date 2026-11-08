@@ -1,4 +1,4 @@
-# Boring Notch for Windows (Tauri)
+# bento for Windows (Tauri)
 
 Porting macOS [boring.notch](https://github.com/TheBoredTeam/boring.notch) ke Windows menggunakan Tauri v2, Rust, dan React + Tailwind CSS.
 
@@ -59,11 +59,11 @@ Untuk membuat installer utuh yang bisa di-install di Windows mana pun dan otomat
 npm run tauri build
 ```
 File installer NSIS setup wizard mandiri akan otomatis terbentuk di:
-`src-tauri/target/release/bundle/nsis/Boring Notch_0.1.0_x64-setup.exe`
+`src-tauri/target/release/bundle/nsis/bento_0.1.0_x64-setup.exe`
 
 ### 4. Pengaturan Otomatis Nyala saat Windows Boot (Startup Apps)
 1. **Lewat Notch**: Buka notch saat standby (mode expanded), di sudut kanan bawah terdapat tombol **`Startup: On / Off`**. Klik untuk mengaktifkan.
 2. **Lewat Windows**: Begitu diaktifkan, aplikasi otomatis terdaftar di:
-   - **Task Manager Windows** -> tab **Startup apps** (`Boring Notch`)
+   - **Task Manager Windows** -> tab **Startup apps** (`bento`)
    - **Windows Settings** -> **Apps** -> **Startup**
    Pengguna bisa langsung menghidupkan atau mematikan dari pengaturan resmi Windows.

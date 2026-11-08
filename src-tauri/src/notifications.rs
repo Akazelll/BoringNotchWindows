@@ -57,7 +57,7 @@ pub fn fetch_active_notifications() -> Vec<AppNotification> {
     let listener = match UserNotificationListener::Current() {
         Ok(l) => l,
         Err(e) => {
-            eprintln!("[BoringNotch] UserNotificationListener::Current() failed: {:?}", e);
+            eprintln!("[bento] UserNotificationListener::Current() failed: {:?}", e);
             return result;
         }
     };
@@ -77,12 +77,12 @@ pub fn fetch_active_notifications() -> Vec<AppNotification> {
         Ok(op) => match op.get() {
             Ok(n) => n,
             Err(e) => {
-                eprintln!("[BoringNotch] GetNotificationsAsync op.get() failed: {:?}", e);
+                eprintln!("[bento] GetNotificationsAsync op.get() failed: {:?}", e);
                 return result;
             }
         },
         Err(e) => {
-            eprintln!("[BoringNotch] GetNotificationsAsync failed: {:?}", e);
+            eprintln!("[bento] GetNotificationsAsync failed: {:?}", e);
             return result;
         }
     };

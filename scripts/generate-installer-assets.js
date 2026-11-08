@@ -212,9 +212,8 @@ const sidebarBmp = createBmp(164, 314, (grid, w, h) => {
     }
   });
 
-  // App Title: "BORING NOTCH"
-  drawText(grid, 'BORING', 26, 115, [255, 255, 255], 2);
-  drawText(grid, 'NOTCH', 26, 135, [255, 255, 255], 2);
+  // App Title: "BENTO"
+  drawText(grid, 'BENTO', 26, 125, [255, 255, 255], 2);
 
   // Subtitle: "WINDOWS EDITION"
   drawText(grid, 'WINDOWS EDITION', 26, 165, [140, 140, 155], 1);
@@ -259,7 +258,7 @@ const headerBmp = createBmp(150, 57, (grid, w, h) => {
   }
 
   // Text on the right
-  drawText(grid, 'BORING NOTCH', 64, 16, [255, 255, 255], 1);
+  drawText(grid, 'BENTO', 64, 16, [255, 255, 255], 1);
   drawText(grid, 'BY ADAM RAGA', 64, 30, [130, 130, 145], 1);
 });
 

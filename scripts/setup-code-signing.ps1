@@ -10,7 +10,7 @@ $ErrorActionPreference = "Stop"
 Write-Host "`n=== Setup Code Signing: Adam Raga ===" -ForegroundColor Cyan
 
 $Subject = "CN=Adam Raga"
-$FriendlyName = "Boring Notch Code Signing - Adam Raga"
+$FriendlyName = "bento Code Signing - Adam Raga"
 
 # 1. Periksa apakah sertifikat Adam Raga sudah ada di Personal Store
 $existingCert = Get-ChildItem -Path "Cert:\CurrentUser\My" | Where-Object { $_.Subject -eq $Subject } | Select-Object -First 1

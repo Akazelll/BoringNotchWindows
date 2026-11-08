@@ -1,29 +1,29 @@
 import type { NotchState } from "../../../shared/types";
 
 // Patented Notch Dimensions
-// Apple MacBook Notch Resting Dimensions: 215x40px
-export const COMPACT_IDLE_WIDTH = 215;
-export const COMPACT_MEDIA_WIDTH = 215;
-export const COMPACT_HEIGHT = 40;
+// Apple MacBook Notch Resting Dimensions: 215x40px, dikecilkan 6% jadi 202x38.
+export const COMPACT_IDLE_WIDTH = 202;
+export const COMPACT_MEDIA_WIDTH = 202;
+export const COMPACT_HEIGHT = 38;
 
-// Notification Banner Dimension - matched to 400x78px (same as Charging & Bluetooth)
-export const NOTIFICATION_BANNER_WIDTH = 400;
-export const NOTIFICATION_BANNER_HEIGHT = 78;
+// Notification Banner Dimension - 376x73 (dari 400x78), same as Charging & Bluetooth
+export const NOTIFICATION_BANNER_WIDTH = 376;
+export const NOTIFICATION_BANNER_HEIGHT = 73;
 
-// Bluetooth Banner Dimension - matched to 400x78px (same as Charging Banner)
-export const BLUETOOTH_BANNER_WIDTH = 400;
-export const BLUETOOTH_BANNER_HEIGHT = 78;
+// Bluetooth Banner Dimension - 376x73, same as Charging Banner
+export const BLUETOOTH_BANNER_WIDTH = 376;
+export const BLUETOOTH_BANNER_HEIGHT = 73;
 
-// Charging Banner Dimension - 100% matched to Charging.dc.html (400x78px)
-export const CHARGING_BANNER_WIDTH = 400;
-export const CHARGING_BANNER_HEIGHT = 78;
+// Charging Banner Dimension - 376x73 (dari 400x78)
+export const CHARGING_BANNER_WIDTH = 376;
+export const CHARGING_BANNER_HEIGHT = 73;
 
-// Prayer Banner Dimension - 400x78px, mengikuti bahasa visual banner lain.
+// Prayer Banner Dimension - 376x73, mengikuti bahasa visual banner lain.
 // SENGAJA tidak memakai 520x130 dari PrayerReminder.dc.html: semua banner notch seragam
-// 400x78 dan radius/ear/shadow notch sudah disetel untuk kotak itu, sementara artboard
+// 376x73 dan radius/ear/shadow notch sudah disetel untuk kotak itu, sementara artboard
 // referensi memuat chrome preview.
-export const PRAYER_BANNER_WIDTH = 400;
-export const PRAYER_BANNER_HEIGHT = 78;
+export const PRAYER_BANNER_WIDTH = 376;
+export const PRAYER_BANNER_HEIGHT = 73;
 
 // Expanded Dimensions: 540x214. Lebih lebar dan sedikit lebih pendek dari sebelumnya
 // (460x225) supaya halaman Prayer punya ruang untuk 5 label jam di bawah busur matahari;
@@ -34,9 +34,9 @@ export const EXPANDED_HEIGHT = 214;
 export const EXPANDED_LYRICS_WIDTH = 680;
 export const EXPANDED_LYRICS_HEIGHT = 245;
 
-// Panggilan: referensi CallStates.dc.html — "Ringkas" 220x46 dan "Standar" 380x74.
-export const CALL_COMPACT_WIDTH = 220;
-export const CALL_COMPACT_HEIGHT = 46;
+// Panggilan: referensi CallStates.dc.html — "Ringkas" 207x43 (dari 220x46) dan "Standar" 380x74.
+export const CALL_COMPACT_WIDTH = 207;
+export const CALL_COMPACT_HEIGHT = 43;
 export const CALL_EXPANDED_WIDTH = 380;
 export const CALL_EXPANDED_HEIGHT = 74;
 
@@ -88,7 +88,7 @@ export function getNotchDimensions(
     return {
       width: CALL_COMPACT_WIDTH,
       height: CALL_COMPACT_HEIGHT,
-      notchRadiusClass: "rounded-b-[24px]",
+      notchRadiusClass: "rounded-b-[23px]",
     };
   }
   // Prayer di atas banner ambient: peristiwa sekali sehari pada jam pasti, jendelanya sempit
@@ -97,40 +97,40 @@ export function getNotchDimensions(
     return {
       width: PRAYER_BANNER_WIDTH,
       height: PRAYER_BANNER_HEIGHT,
-      notchRadiusClass: "rounded-b-[38px]",
+      notchRadiusClass: "rounded-b-[36px]",
     };
   }
   if (isChargingBannerActive) {
     return {
       width: CHARGING_BANNER_WIDTH,
       height: CHARGING_BANNER_HEIGHT,
-      notchRadiusClass: "rounded-b-[38px]",
+      notchRadiusClass: "rounded-b-[36px]",
     };
   }
   if (isBluetoothBannerActive) {
     return {
       width: BLUETOOTH_BANNER_WIDTH,
       height: BLUETOOTH_BANNER_HEIGHT,
-      notchRadiusClass: "rounded-b-[38px]",
+      notchRadiusClass: "rounded-b-[36px]",
     };
   }
   if (isNotificationActive) {
     return {
       width: NOTIFICATION_BANNER_WIDTH,
       height: NOTIFICATION_BANNER_HEIGHT,
-      notchRadiusClass: "rounded-b-[18px]",
+      notchRadiusClass: "rounded-b-[17px]",
     };
   }
   if (isMediaPlaying) {
     return {
       width: COMPACT_MEDIA_WIDTH,
       height: COMPACT_HEIGHT,
-      notchRadiusClass: "rounded-b-[14px]",
+      notchRadiusClass: "rounded-b-[13px]",
     };
   }
   return {
     width: COMPACT_IDLE_WIDTH,
     height: COMPACT_HEIGHT,
-    notchRadiusClass: "rounded-b-[14px]",
+    notchRadiusClass: "rounded-b-[13px]",
   };
 }

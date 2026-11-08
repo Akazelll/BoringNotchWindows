@@ -46,7 +46,7 @@ export function useCallDetection(
       if (payload) {
         if (isSuppressed()) return;
         setCall((prev) => {
-          // If the user already accepted the call locally in Boring Notch, keep it active
+          // If the user already accepted the call locally in bento, keep it active
           if (prev && prev.state === "active") {
             return prev;
           }
