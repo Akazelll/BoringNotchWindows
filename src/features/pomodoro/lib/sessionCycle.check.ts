@@ -5,6 +5,7 @@ import {
   durationFor,
   nextSession,
   sessionProgress,
+  sessionRemainingRatio,
   type SessionState,
 } from "./sessionCycle.ts";
 
@@ -64,5 +65,13 @@ const longTrack = buildSessionTrack({ mode: "longBreak", sessionIndex: 4, comple
 assert(longTrack[4].isCurrent, "istirahat panjang jadi sesi berjalan");
 assert(Math.abs(longTrack[4].fillPercent - 50) < 0.001, "istirahat panjang memakai progres dalam sesi");
 assert(longTrack[0].isDone && longTrack[3].isDone, "keempat sesi fokus selesai sebelum istirahat panjang");
+
+// Bar countdown: penuh saat sesi baru mulai, kosong saat waktu habis.
+assert(sessionRemainingRatio(1500, 1500) === 1, "bar penuh tepat setelah sesi mulai/reset");
+assert(Math.abs(sessionRemainingRatio(750, 1500) - 0.5) < 0.001, "bar setengah saat sisa separuh");
+assert(sessionRemainingRatio(0, 1500) === 0, "bar kosong saat waktu habis");
+assert(sessionRemainingRatio(1500, 0) === 0, "durasi 0 tidak membagi nol");
+assert(sessionRemainingRatio(-5, 1500) === 0, "sisa negatif dijepit ke 0");
+assert(sessionRemainingRatio(9999, 1500) === 1, "sisa melebihi durasi dijepit ke 1");
 
 console.log("sessionCycle: ok");

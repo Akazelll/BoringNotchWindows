@@ -6,6 +6,8 @@ import {
   PRAYER_LABEL_ID,
   PRAYER_ORDER,
   arcFraction,
+  arcPointBetweenDots,
+  arcPointForLabelPx,
   formatHHMMId,
   parseHHMM,
   spreadLabelPositions,
@@ -24,12 +26,12 @@ interface PrayerTimesPanelProps {
 const LABEL_ROW_HEIGHT = 30;
 
 /**
- * Busur matahari + baris jam 5 salat, mengikuti Prayer.dc.html. Titik salat diletakkan
- * menurut jamnya (bukan jarak seragam seperti artboard) supaya posisinya menyatakan waktu,
- * dan matahari duduk di posisi jam sekarang.
+ * Busur matahari + baris jam 5 salat, mengikuti Prayer.dc.html. Matahari duduk di posisi jam
+ * sekarang; kelima titik salat duduk tepat di atas nama salatnya, seperti artboard.
  *
- * Label jam TIDAK ditempel tepat di bawah titiknya: salat di Indonesia berdesakan di ujung
- * hari, jadi labelnya digeser ke kiri oleh `spreadLabelPositions` sampai tidak bertumpuk.
+ * Label jam digeser ke kiri oleh `spreadLabelPositions` karena salat di Indonesia berdesakan
+ * di ujung hari, lalu dot-nya dihitung ulang dari posisi label itu (`arcPointForLabelPx`).
+ * Menggambar dot di posisi jamnya sendiri akan membuatnya melayang jauh dari nama salat.
  */
 export const PrayerTimesPanel: React.FC<PrayerTimesPanelProps> = ({ times, activeKey, prevKey, nowFraction }) => {
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -51,10 +53,9 @@ export const PrayerTimesPanel: React.FC<PrayerTimesPanelProps> = ({ times, activ
     return () => observer.disconnect();
   }, []);
 
-  const sun = sunArcXY(nowFraction);
   const markers = PRAYER_ORDER.map((key) => {
     const fraction = arcFraction(parseHHMM(times[key]), times);
-    return { key, ...sunArcXY(fraction) };
+    return { key, fraction, ...sunArcXY(fraction) };
   });
 
   // Di bawah 260px SVG dibatasi lebar sehingga titik px-nya proporsional terhadap panel;
@@ -64,6 +65,30 @@ export const PrayerTimesPanel: React.FC<PrayerTimesPanelProps> = ({ times, activ
   const markerPx = markers.map((m) => offsetX + m.x * scale);
   const labelPositions =
     panelWidth > 0 ? spreadLabelPositions(markerPx, panelWidth) : markerPx;
+
+  // Dot mengikuti posisi LABEL (bukan posisi jamnya): label yang berdesakan digeser ke kiri,
+  // jadi titik yang tetap di posisi jam akan melayang menjauh dari nama salatnya.
+  const dotPositions = markers.map((marker, index) =>
+    scale > 0 ? arcPointForLabelPx(labelPositions[index], scale, offsetX) : marker
+  );
+
+  // Matahari juga mengikuti dot: dot sudah digeser ke posisi label, jadi posisi waktu mentah
+  // akan berdiri di kanan dot aktif (setelah Ashar tampak sudah lewat Maghrib). Ia
+  // diinterpolasi dari x kedua dot yang mengapit jam sekarang.
+  const prevIdx = PRAYER_ORDER.indexOf(prevKey);
+  const nextIdx = PRAYER_ORDER.indexOf(activeKey);
+  // Sebelum Subuh / sesudah Isya urutannya membungkus, jadi tidak ada segmen yang mengapit:
+  // pakai posisi waktu apa adanya, matahari menempel di ujung busur.
+  const sun =
+    scale > 0 && prevIdx >= 0 && nextIdx >= 0 && prevIdx < nextIdx
+      ? arcPointBetweenDots(
+          nowFraction,
+          markers[prevIdx].fraction,
+          markers[nextIdx].fraction,
+          dotPositions[prevIdx].x,
+          dotPositions[nextIdx].x
+        )
+      : sunArcXY(nowFraction);
 
   return (
     <div
@@ -105,9 +130,17 @@ export const PrayerTimesPanel: React.FC<PrayerTimesPanelProps> = ({ times, activ
           clipPath="url(#prayer-lit)"
         />
 
-        {markers.map(({ key, x, y }) => {
+        {markers.map(({ key }, index) => {
           const isActive = key === activeKey;
-          return <circle key={key} cx={x} cy={y} r={isActive ? 3.6 : 3.2} fill={isActive ? "#ffffff" : "#7FB7FF"} />;
+          return (
+            <circle
+              key={key}
+              cx={dotPositions[index].x}
+              cy={dotPositions[index].y}
+              r={isActive ? 3.6 : 3.2}
+              fill={isActive ? "#ffffff" : "#7FB7FF"}
+            />
+          );
         })}
 
         <circle cx={sun.x} cy={sun.y} r="15" fill="url(#prayer-sun)" />

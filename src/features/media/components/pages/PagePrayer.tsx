@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React from "react";
 import { ExpandedClockHeader, HeaderPageTitle } from "../../../../shared/components/ui/ExpandedHeaderParts";
 import { BatteryInfo } from "../../../../shared/types";
 import {
@@ -7,6 +7,7 @@ import {
   formatRelative,
   type PrayerController,
 } from "../../../prayer";
+import { ProgressBar } from "../../../../shared/components/ui/ProgressBar";
 import { PrayerTimesPanel } from "./PrayerTimesPanel";
 
 interface PagePrayerProps {
@@ -17,20 +18,7 @@ interface PagePrayerProps {
 }
 
 export const PagePrayer: React.FC<PagePrayerProps> = ({ battery, dateStr, timeStr, prayer }) => {
-  const [isEditingCity, setIsEditingCity] = useState(false);
-  const [cityDraft, setCityDraft] = useState("");
-
-  const { next, times, location, isLoading, isStale, error, isResolvingCity } = prayer;
-
-  const submitCity = async () => {
-    if (!cityDraft.trim()) {
-      setIsEditingCity(false);
-      return;
-    }
-    await prayer.setManualCity(cityDraft);
-    setIsEditingCity(false);
-    setCityDraft("");
-  };
+  const { next, times, location, isLoading, isStale, error } = prayer;
 
   return (
     <div
@@ -45,125 +33,27 @@ export const PagePrayer: React.FC<PagePrayerProps> = ({ battery, dateStr, timeSt
       }}
       className="animate-in fade-in duration-200"
     >
-      {/* Header Row: nama kota (bisa diubah) kiri, jam tengah */}
+      {/* Header Row: nama kota (otomatis dari lokasi perangkat) kiri, jam tengah */}
       <ExpandedClockHeader
         battery={battery}
         dateStr={dateStr}
         timeStr={timeStr}
         left={
           <>
-          <HeaderPageTitle text="Salat" />
-
-          {isEditingCity ? (
-            <>
-              <input
-                autoFocus
-                value={cityDraft}
-                onChange={(e) => setCityDraft(e.target.value)}
-                onClick={(e) => e.stopPropagation()}
-                onKeyDown={(e) => {
-                  e.stopPropagation();
-                  if (e.key === "Enter") void submitCity();
-                  if (e.key === "Escape") setIsEditingCity(false);
-                }}
-                placeholder="Ketik nama kota..."
-                aria-label="Cari kota"
-                style={{
-                  width: "130px",
-                  background: "rgba(255,255,255,0.07)",
-                  border: "1px solid rgba(255,255,255,0.14)",
-                  borderRadius: "8px",
-                  padding: "2px 6px",
-                  color: "#ffffff",
-                  fontSize: "12px",
-                  outline: "none",
-                }}
-              />
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  void submitCity();
-                }}
-                disabled={isResolvingCity}
-                style={{
-                  border: "none",
-                  background: "transparent",
-                  color: "#5AA2FF",
-                  fontSize: "12px",
-                  fontWeight: 600,
-                  cursor: "pointer",
-                  padding: 0,
-                }}
-                className="active:scale-95 transition"
-              >
-                {isResolvingCity ? "Mencari..." : "Simpan"}
-              </button>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setIsEditingCity(false);
-                }}
-                style={{
-                  border: "none",
-                  background: "transparent",
-                  color: "#8a8a93",
-                  fontSize: "12px",
-                  fontWeight: 500,
-                  cursor: "pointer",
-                  padding: 0,
-                }}
-              >
-                Batal
-              </button>
-            </>
-          ) : (
-            <>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setCityDraft(location?.city ?? "");
-                  setIsEditingCity(true);
-                }}
-                title="Klik untuk mengganti kota"
-                style={{
-                  border: "none",
-                  background: "transparent",
-                  color: "#8a8a93",
-                  fontSize: "13px",
-                  fontWeight: 500,
-                  cursor: "pointer",
-                  padding: 0,
-                  maxWidth: "140px",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {location?.city ?? "Lokasi tidak terdeteksi"}
-                {location?.source === "manual" ? " · manual" : ""}
-              </button>
-              {location?.source === "manual" && (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    void prayer.resetToAuto();
-                  }}
-                  title="Kembali ke lokasi otomatis"
-                  style={{
-                    border: "none",
-                    background: "transparent",
-                    color: "#5AA2FF",
-                    fontSize: "11px",
-                    fontWeight: 600,
-                    cursor: "pointer",
-                    padding: 0,
-                  }}
-                >
-                  Deteksi otomatis
-                </button>
-              )}
-            </>
-          )}
+            <HeaderPageTitle text="Salat" />
+            <span
+              style={{
+                color: "#8a8a93",
+                fontSize: "13px",
+                fontWeight: 500,
+                maxWidth: "140px",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {location?.city || "Lokasi tidak terdeteksi"}
+            </span>
           </>
         }
       />
@@ -184,28 +74,7 @@ export const PagePrayer: React.FC<PagePrayerProps> = ({ battery, dateStr, timeSt
                 {formatRelative(next.minutesLeft)}
               </span>
             </div>
-            <div
-              style={{
-                position: "relative",
-                height: "5px",
-                borderRadius: "3px",
-                background: "rgba(255,255,255,0.12)",
-                marginTop: "10px",
-              }}
-              aria-hidden="true"
-            >
-              <div
-                style={{
-                  position: "absolute",
-                  left: 0,
-                  top: 0,
-                  bottom: 0,
-                  width: `${(next.arcFraction * 100).toFixed(1)}%`,
-                  borderRadius: "3px",
-                  background: "linear-gradient(90deg, #2F7BFF 0%, #7FB7FF 100%)",
-                }}
-              />
-            </div>
+            <ProgressBar value={next.arcFraction} />
             {isStale && (
               <div style={{ fontSize: "11px", fontWeight: 500, color: "#8a8a93", paddingTop: "4px" }}>Jadwal kemarin</div>
             )}

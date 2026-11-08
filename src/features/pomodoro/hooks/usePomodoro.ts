@@ -8,6 +8,7 @@ import {
   modeLabelId,
   nextSession,
   sessionProgress,
+  sessionRemainingRatio,
   type PomodoroMode,
 } from "../lib/sessionCycle";
 
@@ -170,6 +171,10 @@ export function usePomodoro() {
   const progressRatio =
     totalDuration > 0 ? Math.min(1, Math.max(0, (totalDuration - timeLeft) / totalDuration)) : 0;
 
+  // progressRatio = terpakai (menggerakkan trek sesi ke kanan).
+  // remainingRatio = sisa (menggerakkan bar di halaman Pomodoro, hitung-mundur).
+  const remainingRatio = sessionRemainingRatio(timeLeft, totalDuration);
+
   // Jam selesai sesi berjalan, format "15.15" mengikuti jam Indonesia di halaman lain.
   const endsAt = new Date(Date.now() + timeLeft * 1000);
   const endsAtLabel = `${String(endsAt.getHours()).padStart(2, "0")}.${String(endsAt.getMinutes()).padStart(2, "0")}`;
@@ -184,6 +189,7 @@ export function usePomodoro() {
     isRunning,
     timeFormatted,
     progressRatio,
+    remainingRatio,
     sessionIndex,
     completedFocus,
     sessionsPerCycle: SESSIONS_PER_CYCLE,

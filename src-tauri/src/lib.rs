@@ -5,6 +5,7 @@ mod fullscreen;
 mod autostart;
 mod bluetooth;
 mod cursor;
+mod location;
 pub mod migrate;
 
 use cursor::CursorState;
@@ -94,6 +95,46 @@ fn set_autostart_enabled(enabled: bool) -> Result<(), String> {
     }
 }
 
+/// Tampilkan notch lagi dan angkat ke puncak z-order tanpa merebut fokus.
+///
+/// `window.set_always_on_top(true)` tidak bisa dipakai untuk ini: tao melewati `SetWindowPos`
+/// bila flag ALWAYS_ON_TOP tidak berubah, sedangkan jendela ini sudah topmost sejak dibuat.
+/// Akibatnya `show()` (yang memakai `SWP_NOZORDER`) bisa meninggalkan notch di bawah jendela
+/// topmost lain — mis. pemutar video yang baru keluar dari fullscreen.
+fn reveal_notch(window: &tauri::WebviewWindow) -> bool {
+    if window.show().is_err() {
+        return false;
+    }
+
+    #[cfg(windows)]
+    {
+        use windows::Win32::Foundation::HWND;
+        use windows::Win32::UI::WindowsAndMessaging::{
+            SetWindowPos, HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
+        };
+
+        // Gagal mengangkat bukan alasan mengulang show(); jendela sudah terlihat.
+        if let Ok(hwnd) = window.hwnd() {
+            // `hwnd()` memakai crate `windows` versi tauri; kedua HWND repr(transparent) atas
+            // pointer, jadi cukup diteruskan nilai mentahnya.
+            let hwnd = HWND(hwnd.0 as _);
+            unsafe {
+                let _ = SetWindowPos(
+                    hwnd,
+                    HWND_TOPMOST,
+                    0,
+                    0,
+                    0,
+                    0,
+                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+                );
+            }
+        }
+    }
+
+    true
+}
+
 #[tauri::command]
 fn set_notch_size(window: tauri::WebviewWindow, width: f64, height: f64) {
     if let Ok(Some(monitor)) = window.primary_monitor() {
@@ -108,6 +149,11 @@ fn set_notch_size(window: tauri::WebviewWindow, width: f64, height: f64) {
 #[tauri::command]
 fn get_cursor_state(window: tauri::WebviewWindow) -> Option<CursorState> {
     cursor::fetch_cursor_state(&window)
+}
+
+#[tauri::command]
+fn get_device_location() -> Result<location::DeviceLocation, String> {
+    location::get_device_location()
 }
 
 #[tauri::command]
@@ -254,7 +300,6 @@ pub fn run() {
                 let mut last_active_notifs = Vec::<AppNotification>::new();
                 let mut last_call_key = String::new();
                 let mut last_bt_device = String::new();
-                let mut is_hidden_by_fullscreen = false;
 
                 loop {
                     tokio::time::sleep(Duration::from_millis(600)).await;
@@ -262,23 +307,7 @@ pub fn run() {
                     // 1. Fetch media state
                     let current_media = media::fetch_current_media();
 
-                    // 2. Video fullscreen auto-hide detection
-                    let is_video_fs = match &current_media {
-                        Some(m) => fullscreen::is_video_fullscreen(Some(&m.source_app), m.is_playing),
-                        None => fullscreen::is_video_fullscreen(None, false),
-                    };
-
-                    if let Some(window) = app_handle.get_webview_window("main") {
-                        if is_video_fs && !is_hidden_by_fullscreen {
-                            let _ = window.hide();
-                            is_hidden_by_fullscreen = true;
-                        } else if !is_video_fs && is_hidden_by_fullscreen {
-                            let _ = window.show();
-                            is_hidden_by_fullscreen = false;
-                        }
-                    }
-
-                    // 3. Media streaming
+                    // 2. Media streaming
                     match &current_media {
                         Some(m) => {
                             let pos_jump = (m.position_sec as i64 - last_pos as i64).abs();
@@ -299,7 +328,7 @@ pub fn run() {
                         }
                     }
 
-                    // 4. Battery streaming
+                    // 3. Battery streaming
                     let battery = power::get_system_battery();
                     if battery.level != last_battery_level || battery.is_charging != last_charging {
                         last_battery_level = battery.level;
@@ -307,14 +336,14 @@ pub fn run() {
                         let _ = app_handle.emit("battery-state-changed", &battery);
                     }
 
-                    // 5. Windows Notifications streaming
+                    // 4. Windows Notifications streaming
                     let active_notifs = notifications::fetch_active_notifications();
                     if active_notifs != last_active_notifs {
                         last_active_notifs = active_notifs.clone();
                         let _ = app_handle.emit("notifications-changed", &active_notifs);
                     }
 
-                    // 6. Direct Call Detection (Notifications + Win32 Windows)
+                    // 5. Direct Call Detection (Notifications + Win32 Windows)
                     let call_from_notif = active_notifs.iter().find(|n| n.is_call).map(|n| CallEventInfo {
                         caller_name: n.title.clone(),
                         caller_number: if n.message.is_empty() { None } else { Some(n.message.clone()) },
@@ -331,7 +360,7 @@ pub fn run() {
                         let _ = app_handle.emit("call-state-changed", &current_call);
                     }
 
-                    // 8. Bluetooth Connected Event Streaming
+                    // 6. Bluetooth Connected Event Streaming
                     if let Some(bt) = bluetooth::fetch_connected_bluetooth() {
                         let name_lower = bt.name.to_lowercase().trim().to_string();
                         let is_generic = name_lower == "headset"
@@ -351,6 +380,50 @@ pub fn run() {
                         }
                     } else if !last_bt_device.is_empty() {
                         last_bt_device.clear();
+                    }
+                }
+            });
+
+            // Task terpisah khusus auto-hide fullscreen. Sengaja dipisah dari loop streaming di
+            // atas: loop itu memanggil WinRT/notifikasi/Bluetooth yang bisa blocking sampai
+            // beberapa detik, sehingga notch terlambat kembali setelah keluar fullscreen.
+            // Loop ini hanya membaca jendela foreground (murah) tiap 200 ms.
+            let fs_handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                // 3 sampel x 200 ms = 600 ms. Overlay sesaat tetap tidak menyembunyikan notch,
+                // sedangkan notch kembali dalam <200 ms setelah fullscreen berakhir.
+                const FS_STREAK_TO_HIDE: u32 = 3;
+                let mut fs_streak = 0u32;
+                // true hanya bila notch disembunyikan oleh loop ini, supaya hide manual dari tray
+                // tidak dilawan.
+                let mut hidden_by_fullscreen = false;
+
+                loop {
+                    tokio::time::sleep(Duration::from_millis(200)).await;
+
+                    fs_streak = if fullscreen::is_video_fullscreen(None) {
+                        fs_streak.saturating_add(1)
+                    } else {
+                        0
+                    };
+
+                    let Some(window) = fs_handle.get_webview_window("main") else {
+                        continue;
+                    };
+
+                    if fs_streak >= FS_STREAK_TO_HIDE && !hidden_by_fullscreen {
+                        // Hanya sembunyikan bila notch memang sedang tampil, supaya notch yang
+                        // sengaja disembunyikan dari tray tidak ikut muncul lagi saat fullscreen
+                        // berakhir. Tandai hanya bila pesan hide benar-benar terkirim; kalau
+                        // gagal, tick berikutnya mencoba lagi alih-alih menyerah.
+                        if window.is_visible().unwrap_or(false) && window.hide().is_ok() {
+                            hidden_by_fullscreen = true;
+                        }
+                    } else if fs_streak == 0 && hidden_by_fullscreen {
+                        // Sama seperti hide: ulangi tick berikutnya bila show gagal.
+                        if reveal_notch(&window) {
+                            hidden_by_fullscreen = false;
+                        }
                     }
                 }
             });
@@ -392,6 +465,7 @@ pub fn run() {
             set_autostart_enabled,
             set_notch_size,
             get_cursor_state,
+            get_device_location,
             trigger_notification_test,
             answer_system_call,
             decline_system_call,

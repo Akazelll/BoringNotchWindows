@@ -15,8 +15,8 @@ import {
   type PrayerTimes,
 } from "../lib/prayerTimes";
 import {
+  LOCATION_TTL_MS,
   detectLocation,
-  geocodeCity,
   loadLocation,
   saveLocation,
   type PrayerLocation,
@@ -44,7 +44,6 @@ export function usePrayer(isExpanded: boolean = false) {
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [isStale, setIsStale] = useState<boolean>(false);
-  const [isResolvingCity, setIsResolvingCity] = useState<boolean>(false);
   const [nowMinutes, setNowMinutes] = useState<number>(0);
   const [dateKey, setDateKey] = useState<string>("");
   const [banner, setBanner] = useState<PrayerBannerState | null>(null);
@@ -56,20 +55,26 @@ export function usePrayer(isExpanded: boolean = false) {
 
   bannerRef.current = banner;
 
-  // Lokasi: hanya deteksi dari IP bila belum ada, supaya override manual tidak pernah tertimpa.
+  // Lokasi: cache dipakai langsung selama masih segar, lalu dideteksi ulang saat kedaluwarsa.
+  // Sebelumnya cukup `if (location) return;`, sehingga lokasi yang tersimpan sekali dipakai
+  // selamanya walau perangkat sudah pindah.
   useEffect(() => {
-    if (location) return;
+    if (location && Date.now() - location.detectedAt < LOCATION_TTL_MS) return;
 
     let cancelled = false;
     detectLocation()
       .then((detected) => {
         if (cancelled) return;
-        saveLocation(detected);
-        setLocationState(detected);
-        setTimeZone(detected.timeZone);
+        const saved = saveLocation(detected);
+        setLocationState(saved);
+        setTimeZone(saved.timeZone);
+        setError(null);
       })
       .catch((err: Error) => {
         if (cancelled) return;
+        // Lokasi lama yang kedaluwarsa tetap dipakai: gagal deteksi saat offline tidak boleh
+        // mengosongkan jadwal yang sudah tampil.
+        if (location) return;
         setError(err.message || "Lokasi tidak terdeteksi");
         setIsLoading(false);
       });
@@ -173,36 +178,6 @@ export function usePrayer(isExpanded: boolean = false) {
     setBanner(null);
   }, []);
 
-  const setManualCity = useCallback(async (query: string) => {
-    setIsResolvingCity(true);
-    try {
-      const resolved = await geocodeCity(query);
-      saveLocation(resolved);
-      setTimeZone(resolved.timeZone);
-      setIsStale(false);
-      setError(null);
-      setLocationState(resolved);
-    } finally {
-      setIsResolvingCity(false);
-    }
-  }, []);
-
-  const resetToAuto = useCallback(async () => {
-    setIsResolvingCity(true);
-    try {
-      const detected = await detectLocation();
-      saveLocation(detected);
-      setTimeZone(detected.timeZone);
-      setIsStale(false);
-      setError(null);
-      setLocationState({ ...detected, source: "auto" });
-    } catch (err) {
-      setError((err as Error).message || "Lokasi tidak terdeteksi");
-    } finally {
-      setIsResolvingCity(false);
-    }
-  }, []);
-
   const retry = useCallback(() => {
     retryAfterRef.current = 0;
     setRetryNonce((n) => n + 1);
@@ -229,7 +204,6 @@ export function usePrayer(isExpanded: boolean = false) {
     times,
     isLoading,
     isStale,
-    isResolvingCity,
     error,
     dateKey,
     graceMinutes: GRACE_MIN,
@@ -237,8 +211,6 @@ export function usePrayer(isExpanded: boolean = false) {
     banner,
     isPrayerBannerActive: banner !== null,
     dismissBanner,
-    setManualCity,
-    resetToAuto,
     retry,
   };
 }

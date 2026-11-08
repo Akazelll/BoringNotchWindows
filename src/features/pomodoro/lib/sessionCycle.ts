@@ -42,6 +42,16 @@ export function sessionProgress(sessionIndex: number): number {
   return (sessionIndex - 1) / SESSIONS_PER_CYCLE;
 }
 
+/**
+ * Sisa waktu sesi sebagai 0..1 — arah bar di halaman Pomodoro.
+ * 1 = baru mulai / setelah reset, 0 = waktu habis. Kebalikan dari `progressRatio` di hook,
+ * yang justru dipakai trek sesi dan harus tetap naik.
+ */
+export function sessionRemainingRatio(timeLeft: number, totalDuration: number): number {
+  if (totalDuration <= 0) return 0;
+  return Math.min(1, Math.max(0, timeLeft / totalDuration));
+}
+
 /** `2 j 10 mnt · 4 sesi`, dihitung dari konstanta sehingga tidak bisa melenceng dari durasi nyata. */
 export function cycleSummaryLabel(): string {
   const totalMin =

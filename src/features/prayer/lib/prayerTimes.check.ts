@@ -1,6 +1,9 @@
 import {
   LABEL_WIDTH,
   arcFraction,
+  arcPointBetweenDots,
+  arcPointForLabelPx,
+  arcPointForViewX,
   formatHHMMId,
   formatRelative,
   loadFired,
@@ -102,6 +105,31 @@ for (const key of ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"] as const) {
   previousX = x;
 }
 
+// Dot mengikuti label, bukan posisi jamnya: px label dibalik ke viewBox lalu diambil y busur.
+assert(arcPointForLabelPx(12, 1, 0).x === 12, "label di ujung kiri");
+assert(arcPointForLabelPx(130, 1, 0).y === 12, "label di puncak busur");
+assert(arcPointForLabelPx(248, 1, 0).x === 248, "label di ujung kanan");
+assert(
+  arcPointForLabelPx(-500, 1, 0).x === 12 && arcPointForLabelPx(999, 1, 0).x === 248,
+  "px di luar panel dijepit ke ujung busur"
+);
+assert(arcPointForLabelPx(100, 0, 0).x === 12, "scale 0 tidak menghasilkan NaN");
+
+// Matahari mengikuti dot: di waktu salat ia duduk tepat di dot itu, di tengah segmen di titik
+// tengah kedua dot, dan selalu di atas busur.
+const f0 = 0.2;
+const f1 = 0.6;
+assert(arcPointBetweenDots(f0, f0, f1, 80, 126).x === 80, "matahari di dot kiri");
+assert(arcPointBetweenDots(f1, f0, f1, 80, 126).x === 126, "matahari di dot kanan");
+assert(arcPointBetweenDots((f0 + f1) / 2, f0, f1, 80, 126).x === 103, "matahari di tengah segmen");
+assert(arcPointBetweenDots(-1, f0, f1, 80, 126).x === 80, "sebelum segmen dijepit ke kiri");
+assert(arcPointBetweenDots(9, f0, f1, 80, 126).x === 126, "sesudah segmen dijepit ke kanan");
+assert(arcPointBetweenDots(f0, f0, f0, 80, 126).x === 80, "segmen kosong tidak NaN");
+for (const now of [f0, (f0 + f1) / 2, f1]) {
+  const sun = arcPointBetweenDots(now, f0, f1, 80, 126);
+  assert(Math.abs(sun.y - arcPointForViewX(sun.x).y) < 1e-9, "matahari tetap di atas busur");
+}
+
 // Posisi label: hanya yang berdesakan yang bergeser, selalu ke kiri, tidak ada yang bertumpuk.
 // Panel 241px adalah keadaan nyata di kartu 540px; tikungan busur px-nya 11,122,170,212,230.
 const spread = spreadLabelPositions([11, 122, 170, 212, 230], 241);
@@ -117,6 +145,15 @@ assert(
   spread.every((x) => x >= LABEL_WIDTH / 2 && x <= 241 - LABEL_WIDTH / 2),
   "semua label di dalam panel"
 );
+
+// Invarian yang paling penting: px label -> dot -> px kembali harus identik, jadi kelima dot
+// benar-benar duduk di atas kotak labelnya (panel 241, sama seperti blok spread di atas).
+const arcScale = 241 / 260;
+for (const px of spread) {
+  const dot = arcPointForLabelPx(px, arcScale, 0);
+  assert(Math.abs(dot.x * arcScale - px) < 1e-9, `dot ${dot.x} tidak di atas label ${px}px`);
+  assert(dot.y > 0 && dot.y < 78, "dot di dalam busur");
+}
 
 // Label yang sudah cukup di kiri tidak ikut bergeser.
 const alreadyLeft = spreadLabelPositions([23, 122, 172, 212, 230], 241);

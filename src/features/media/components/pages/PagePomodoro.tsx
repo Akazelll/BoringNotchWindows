@@ -2,6 +2,7 @@ import React from "react";
 import { BatteryInfo } from "../../../../shared/types";
 import { modeLabelId, type PomodoroController } from "../../../pomodoro";
 import { ExpandedClockHeader, HeaderPageTitle, HeaderWaveformIcon } from "../../../../shared/components/ui/ExpandedHeaderParts";
+import { ProgressBar } from "../../../../shared/components/ui/ProgressBar";
 
 interface PagePomodoroProps {
   battery: BatteryInfo;
@@ -13,7 +14,7 @@ interface PagePomodoroProps {
 const ACCENT = "#5AA2FF";
 
 export const PagePomodoro: React.FC<PagePomodoroProps> = ({ battery, dateStr, timeStr, pomodoro }) => {
-  const { mode, isRunning, timeFormatted, sessionLabel, sessionTrack, sessionProgress, cycleSummaryLabel, endsAtLabel } =
+  const { mode, isRunning, timeFormatted, sessionLabel, sessionTrack, remainingRatio, cycleSummaryLabel, endsAtLabel } =
     pomodoro;
 
   const breakLabel = modeLabelId(mode === "focus" ? "break" : mode);
@@ -23,7 +24,9 @@ export const PagePomodoro: React.FC<PagePomodoroProps> = ({ battery, dateStr, ti
       style={{
         display: "flex",
         flexDirection: "column",
-        gap: "10px",
+        // 8px, bukan 10: kartu 214px hanya menyisakan ~96px untuk baris tengah, dan kolom kiri
+        // (label + waktu + status + bar) butuh ~101px. Selisih itu dulu memotong bar-nya.
+        gap: "8px",
         width: "100%",
         flex: 1,
         minHeight: 0,
@@ -42,7 +45,7 @@ export const PagePomodoro: React.FC<PagePomodoroProps> = ({ battery, dateStr, ti
 
       {/* Baris tengah: countdown + sesi kiri, kontrol + trek sesi kanan */}
       <div style={{ display: "flex", flexDirection: "row", alignItems: "stretch", gap: "20px", flex: 1, minHeight: 0 }}>
-        <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: "2px", justifyContent: "center" }}>
+        <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: "1px", justifyContent: "center" }}>
           <div style={{ fontSize: "12px", fontWeight: 500, color: "#a1a1aa" }}>{sessionLabel}</div>
           <div
             style={{
@@ -59,28 +62,10 @@ export const PagePomodoro: React.FC<PagePomodoroProps> = ({ battery, dateStr, ti
           <div style={{ fontSize: "13px", fontWeight: 600, color: ACCENT, paddingTop: "2px" }}>
             {isRunning ? `Selesai pukul ${endsAtLabel}` : "Dijeda"}
           </div>
-          <div
-            style={{
-              position: "relative",
-              height: "5px",
-              borderRadius: "3px",
-              background: "rgba(255,255,255,0.12)",
-              marginTop: "6px",
-            }}
-            aria-hidden="true"
-          >
-            <div
-              style={{
-                position: "absolute",
-                left: 0,
-                top: 0,
-                bottom: 0,
-                width: `${(sessionProgress * 100).toFixed(1)}%`,
-                borderRadius: "3px",
-                background: ACCENT,
-              }}
-            />
-          </div>
+          {/* Bar loading sesi berjalan, tepat di bawah teks status. Penuh saat sesi mulai lalu
+              menyusut mengikuti sisa waktu (`remainingRatio`), bukan `sessionProgress` yang
+              hanya melompat 0/25/50/75% per sesi. Komponennya sama dengan bar di halaman Salat. */}
+          <ProgressBar value={remainingRatio} />
         </div>
 
         <div style={{ width: "1px", background: "rgba(255,255,255,0.1)" }} aria-hidden="true" />
@@ -264,7 +249,7 @@ export const PagePomodoro: React.FC<PagePomodoroProps> = ({ battery, dateStr, ti
             pomodoro.setMode("break");
           }}
           style={{
-            height: "36px",
+            height: "32px",
             boxSizing: "border-box",
             padding: "0 14px 0 11px",
             borderRadius: "999px",
@@ -294,7 +279,7 @@ export const PagePomodoro: React.FC<PagePomodoroProps> = ({ battery, dateStr, ti
             pomodoro.setMode("focus");
           }}
           style={{
-            height: "36px",
+            height: "32px",
             boxSizing: "border-box",
             padding: "0 14px 0 11px",
             borderRadius: "999px",

@@ -105,6 +105,50 @@ export function sunArcXY(fraction: number): { x: number; y: number } {
 export const ARC_VIEWBOX_WIDTH = 260;
 export const ARC_VIEWBOX_HEIGHT = 92;
 
+/**
+ * Titik busur untuk x viewBox yang sudah dibalik dari px label panel.
+ *
+ * Label digeser `spreadLabelPositions` supaya tidak bertumpuk, jadi posisi label bukan lagi
+ * posisi jamnya. Dot harus ikut label (desain artboard: titik tepat di atas nama salat), jadi
+ * px label dipetakan balik ke viewBox lalu diambil y busur di x itu. `sunArcXY` sudah menjepit
+ * t ke 0..1, jadi di luar busur pun tetap menempel di ujung.
+ */
+export function arcPointForLabelPx(
+  labelPx: number,
+  scale: number,
+  offsetX: number
+): { x: number; y: number } {
+  if (!(scale > 0)) return { x: 12, y: 78 };
+  return sunArcXY(((labelPx - offsetX) / scale - 12) / 236);
+}
+
+/**
+ * Titik pada busur untuk x viewBox tertentu — kebalikan `sunArcXY` pada sumbu x.
+ * Dipakai matahari, yang x-nya diinterpolasi antar-dot, bukan diturunkan dari waktu.
+ */
+export function arcPointForViewX(viewX: number): { x: number; y: number } {
+  return sunArcXY((viewX - 12) / 236);
+}
+
+/**
+ * Posisi matahari di antara dua dot salat yang mengapitnya.
+ *
+ * Dot sudah digeser ke posisi label oleh `spreadLabelPositions`, jadi memakai posisi waktu
+ * mentah membuat matahari berdiri di kanan dot aktifnya (setelah Ashar tampak sudah lewat
+ * Maghrib). Di sini posisi waktu hanya dipakai sebagai rasio di dalam segmen antar-dot.
+ */
+export function arcPointBetweenDots(
+  nowFraction: number,
+  prevFraction: number,
+  nextFraction: number,
+  prevDotX: number,
+  nextDotX: number
+): { x: number; y: number } {
+  const span = nextFraction - prevFraction;
+  const local = span > 0 ? Math.min(1, Math.max(0, (nowFraction - prevFraction) / span)) : 0;
+  return arcPointForViewX(prevDotX + (nextDotX - prevDotX) * local);
+}
+
 /** Lebar kotak label jam di bawah busur. 5 kotak harus muat dalam panel. */
 export const LABEL_WIDTH = 46;
 
