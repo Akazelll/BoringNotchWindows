@@ -27,6 +27,19 @@ export function formatHHMMId(hhmm: string): string {
   return `${String(h).padStart(2, "0")}.${String(m).padStart(2, "0")}`;
 }
 
+/**
+ * Koordinat sebagai label lokasi cadangan: "-6.80, 110.85".
+ *
+ * Dipakai header Salat saat nama kota tidak tersedia padahal koordinatnya sudah ada. Ini
+ * memisahkan dua keadaan yang dulu tampil sama: deteksi gagal total versus lokasi terdeteksi
+ * tanpa nama. Dipakai koordinat, bukan kalimat, karena ini fakta yang sudah kita punya dan
+ * pendek, sehingga muat di header 140px tanpa terpotong.
+ */
+export function formatCoords(latitude: number, longitude: number): string {
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return "";
+  return `${latitude.toFixed(2)}, ${longitude.toFixed(2)}`;
+}
+
 export interface ZoneWallClock {
   dateKey: string;
   minutes: number;

@@ -3,6 +3,7 @@ import { ExpandedClockHeader, HeaderPageTitle } from "../../../../shared/compone
 import { BatteryInfo } from "../../../../shared/types";
 import {
   PRAYER_LABEL_ID,
+  formatCoords,
   formatHHMMId,
   formatRelative,
   type PrayerController,
@@ -19,6 +20,13 @@ interface PagePrayerProps {
 
 export const PagePrayer: React.FC<PagePrayerProps> = ({ battery, dateStr, timeStr, prayer }) => {
   const { next, times, location, isLoading, isStale, error } = prayer;
+
+  // Nama kota kosong BUKAN berarti lokasi tak terdeteksi: koordinat bisa sudah ada dan jadwal
+  // salat tetap jalan. Dulu keduanya tampil sama, sehingga kegagalan tak bisa dibedakan dari
+  // layar. Sekarang kota kosong ditampilkan sebagai koordinat, dan kalimat itu hanya untuk
+  // kasus benar-benar gagal.
+  const locationLabel =
+    location?.city || (location ? formatCoords(location.latitude, location.longitude) : "");
 
   return (
     <div
@@ -52,7 +60,7 @@ export const PagePrayer: React.FC<PagePrayerProps> = ({ battery, dateStr, timeSt
                 whiteSpace: "nowrap",
               }}
             >
-              {location?.city || "Lokasi tidak terdeteksi"}
+              {locationLabel || "Lokasi tidak terdeteksi"}
             </span>
           </>
         }

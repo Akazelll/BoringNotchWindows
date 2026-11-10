@@ -6,6 +6,7 @@ import {
   arcPointForViewX,
   formatHHMMId,
   formatRelative,
+  formatCoords,
   loadFired,
   nextPrayerIndex,
   parseHHMM,
@@ -175,6 +176,13 @@ assert(formatRelative(68) === "dalam 1 j 8 mnt", "formatRelative 68 menit");
 assert(formatRelative(45) === "dalam 45 mnt", "formatRelative 45 menit");
 assert(formatRelative(0) === "sekarang", "formatRelative 0 menit");
 assert(formatRelative(120) === "dalam 2 j", "formatRelative 2 jam pas");
+
+// Label lokasi cadangan: dua desimal, dan kosong untuk koordinat tak valid supaya pemanggil
+// bisa memakai `||` tanpa menghasilkan label sampah.
+assert(formatCoords(-6.8041, 110.8512) === "-6.80, 110.85", "formatCoords membulatkan 2 desimal");
+assert(formatCoords(0, 0) === "0.00, 0.00", "formatCoords nol tetap sah");
+assert(formatCoords(NaN, 110.85) === "", "formatCoords menolak NaN");
+assert(formatCoords(-6.8, Infinity) === "", "formatCoords menolak Infinity");
 
 assert(nextPrayerIndex(TIMES, parseHHMM("16:40")) === 3, "16:40 berikutnya Maghrib");
 assert(nextPrayerIndex(TIMES, parseHHMM("23:30")) === 0, "setelah Isya membungkus ke Subuh");

@@ -33,9 +33,17 @@ export function loadLocation(): PrayerLocation | null {
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (!isValid(parsed)) return null;
-    // Record lama (termasuk yang dulu berisi kota manual) tidak punya `detectedAt`, jadi
-    // otomatis dianggap kedaluwarsa dan dideteksi ulang — tidak ada pengguna yang terjebak.
-    return { ...parsed, detectedAt: Number.isFinite(parsed.detectedAt) ? parsed.detectedAt : 0 };
+
+    // Record tanpa nama kota dianggap kedaluwarsa. Build lama bisa menulis `city: ""` saat
+    // reverse geocode gagal, dan karena TTL 24 jam record itu terus dipakai: header macet di
+    // label cadangan (dulu "Lokasi tidak terdeteksi", sekarang koordinat) walau deteksi ulang
+    // akan berhasil. Dengan `detectedAt: 0` ia disegarkan pada pembukaan berikutnya.
+    const hasCity = typeof parsed.city === "string" && parsed.city.length > 0;
+    const detectedAt = Number.isFinite(parsed.detectedAt) ? parsed.detectedAt : 0;
+
+    // Record lama (termasuk yang dulu berisi kota manual) juga tidak punya `detectedAt`,
+    // sehingga ikut disegarkan, jadi tidak ada pengguna yang terjebak.
+    return { ...parsed, detectedAt: hasCity ? detectedAt : 0 };
   } catch {
     return null;
   }
@@ -74,9 +82,15 @@ interface IpGeo {
   latitude: number;
   longitude: number;
   timeZone: string;
+  /** Kota perkiraan dari IP. Kasar (menunjuk gateway ISP), jadi hanya cadangan nama. */
+  city?: string;
 }
 
-/** get.geojs.io memberi koordinat + timezone IANA, tapi tidak memberi nama kota. */
+/**
+ * get.geojs.io memberi koordinat, timezone IANA, dan `city`. Kotanya kasar karena berasal dari
+ * IP, jadi nama tetap diutamakan dari reverse geocode; nilai ini hanya menyala kalau reverse
+ * geocode gagal, supaya header tidak jatuh ke "lokasi tidak terdeteksi" padahal koordinat ada.
+ */
 async function ipGeoJsiO(): Promise<IpGeo> {
   let data: Record<string, unknown>;
   try {
@@ -94,7 +108,8 @@ async function ipGeoJsiO(): Promise<IpGeo> {
   }
 
   const timeZone = typeof data?.timezone === "string" && data.timezone.length > 0 ? data.timezone : deviceTimeZone();
-  return { latitude, longitude, timeZone };
+  const city = typeof data?.city === "string" && data.city.length > 0 ? data.city : undefined;
+  return { latitude, longitude, timeZone, city };
 }
 
 /**
@@ -185,7 +200,8 @@ export async function detectLocation(): Promise<Omit<PrayerLocation, "detectedAt
     const geo = await ipGeoJsiO();
     return {
       ...geo,
-      city: (await reverseCity(geo.latitude, geo.longitude)) ?? DEFAULT_CITY,
+      // Tiga tingkat: reverse geocode presisi, kota kasar dari IP, lalu kosong.
+      city: (await reverseCity(geo.latitude, geo.longitude)) ?? geo.city ?? DEFAULT_CITY,
     };
   } catch (err) {
     lastError = err;
