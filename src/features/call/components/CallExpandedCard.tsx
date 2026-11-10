@@ -20,15 +20,18 @@ export const CallExpandedCard: React.FC<CallExpandedCardProps> = ({
   onEnd,
   onToggleMute,
 }) => {
-  const isIncoming = call.state === "incoming";
+  const isRinging = call.state === "incoming";
+  const isDialing = call.state === "outgoing";
   const initials = getInitials(call.callerName);
   const app = getAppMeta(call.appSource);
 
-  // Baris kedua: prioritas error > dering > bisu > durasi biasa.
+  // Baris kedua: prioritas error > dering > memanggil > bisu > durasi biasa.
   const subtitle = call.errorText ? (
     <span style={{ color: "#FF453A" }}>{call.errorText}</span>
-  ) : isIncoming ? (
+  ) : isRinging ? (
     <span style={{ color: "#30D158" }}>Panggilan masuk</span>
+  ) : isDialing ? (
+    <span style={{ color: "#a1a1aa" }}>Memanggil...</span>
   ) : call.isMuted ? (
     <span style={{ color: "#FF9F0A" }}>
       <span style={{ fontVariantNumeric: "tabular-nums" }}>{formatDuration(call.durationSec)}</span>
@@ -59,7 +62,7 @@ export const CallExpandedCard: React.FC<CallExpandedCardProps> = ({
       <CallExpandedAvatar
         initials={initials}
         appColor={app.color}
-        isIncoming={isIncoming}
+        isIncoming={isRinging}
         isMuted={call.isMuted}
       />
 
@@ -81,7 +84,7 @@ export const CallExpandedCard: React.FC<CallExpandedCardProps> = ({
         <div style={{ fontSize: "13px", fontWeight: 600, whiteSpace: "nowrap" }}>{subtitle}</div>
       </div>
 
-      {isIncoming ? (
+      {isRinging ? (
         <>
           <button
             onClick={(e) => {
@@ -113,7 +116,7 @@ export const CallExpandedCard: React.FC<CallExpandedCardProps> = ({
             </svg>
           </button>
         </>
-      ) : (
+      ) : isDialing ? null : (
         <>
           {/* Saat bisu tombol jadi putih — motif referensi, bukan tombol terpisah */}
           <button

@@ -4,6 +4,7 @@ import { BatteryInfo } from "../../../../shared/types";
 import {
   PRAYER_LABEL_ID,
   formatCoords,
+  lastCityNear,
   formatHHMMId,
   formatRelative,
   type PrayerController,
@@ -21,12 +22,13 @@ interface PagePrayerProps {
 export const PagePrayer: React.FC<PagePrayerProps> = ({ battery, dateStr, timeStr, prayer }) => {
   const { next, times, location, isLoading, isStale, error } = prayer;
 
-  // Nama kota kosong BUKAN berarti lokasi tak terdeteksi: koordinat bisa sudah ada dan jadwal
-  // salat tetap jalan. Dulu keduanya tampil sama, sehingga kegagalan tak bisa dibedakan dari
-  // layar. Sekarang kota kosong ditampilkan sebagai koordinat, dan kalimat itu hanya untuk
-  // kasus benar-benar gagal.
+  // Urutan label lokasi: nama kota yang baru didapat, lalu nama kota terakhir yang masih dekat
+  // (label boleh sedikit basi, jauh lebih berguna daripada angka), terakhir koordinat sebagai
+  // fakta yang sudah kita punya. Semua kosong berarti lokasi memang tidak terdeteksi.
   const locationLabel =
-    location?.city || (location ? formatCoords(location.latitude, location.longitude) : "");
+    location?.city ||
+    (location ? lastCityNear(location.latitude, location.longitude) : "") ||
+    (location ? formatCoords(location.latitude, location.longitude) : "");
 
   return (
     <div

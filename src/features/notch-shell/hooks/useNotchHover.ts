@@ -33,8 +33,10 @@ export function useNotchHover(
       enterTimerRef.current = null;
     }
 
-    // If incoming call is ringing, stay expanded until answered or declined
-    if (call && call.state === "incoming") return;
+    // Berdering butuh keputusan (Terima/Tolak), memanggil butuh ditunggu: keduanya
+    // ditahan terbuka. Saat sudah tersambung notch boleh mengecil lagi, karena tombolnya
+    // sudah muat di pill ringkas (lihat PILL_BTN di CallCompactPill).
+    if (call && (call.state === "incoming" || call.state === "outgoing")) return;
 
     leaveTimerRef.current = window.setTimeout(() => {
       setState("compact");

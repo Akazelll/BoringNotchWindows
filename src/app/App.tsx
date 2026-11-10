@@ -71,10 +71,10 @@ export default function App() {
       .catch(() => {});
   }, []);
 
-  // When an incoming call arrives, smoothly expand the notch to highlight the call.
-  // When the call dismisses/cancels without being answered, collapse back to compact.
+  // Panggilan berdering atau sedang memanggil: bentangkan notch untuk menyorot panggilan.
+  // Saat panggilan batal tanpa diangkat, kembali ke compact.
   useEffect(() => {
-    if (call && call.state === "incoming") {
+    if (call && (call.state === "incoming" || call.state === "outgoing")) {
       setState("expanded");
     } else if (!call) {
       setState("compact");

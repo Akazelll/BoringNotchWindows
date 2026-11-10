@@ -168,6 +168,15 @@ fn trigger_notification_test(app_name: Option<String>, title: Option<String>, me
     });
 }
 
+/// Tulis laporan diagnostik notifikasi ke %TEMP% dan kembalikan path-nya.
+///
+/// Di build rilis `eprintln!` mati, jadi ini satu-satunya cara melihat mengapa notifikasi
+/// tidak muncul: berapa toast mentah yang dibaca Windows dan alasan tiap item ditolak.
+#[tauri::command]
+fn dump_notification_diagnostics() -> Result<String, String> {
+    notifications::write_notification_diagnostics()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -210,6 +219,13 @@ pub fn run() {
             let autostart_item = CheckMenuItem::with_id(app, "toggle_autostart", "🚀 Jalankan saat Startup", !cfg!(dev), is_start, None::<&str>)?;
 
             let quit_app = MenuItem::with_id(app, "quit", "❌ Keluar dari bento", true, None::<&str>)?;
+            let notif_diag = MenuItem::with_id(
+                app,
+                "notif_diag",
+                "🩺 Diagnostik Notifikasi",
+                true,
+                None::<&str>,
+            )?;
 
             let tray_menu = Menu::with_items(app, &[
                 &show_notch,
@@ -217,6 +233,8 @@ pub fn run() {
                 &PredefinedMenuItem::separator(app)?,
                 &transparency_menu,
                 &autostart_item,
+                &PredefinedMenuItem::separator(app)?,
+                &notif_diag,
                 &PredefinedMenuItem::separator(app)?,
                 &quit_app,
             ])?;
@@ -262,6 +280,12 @@ pub fn run() {
                             };
                             if let Err(err) = result {
                                 eprintln!("[bento] autostart gagal diubah: {err}");
+                            }
+                        }
+                        "notif_diag" => {
+                            match notifications::write_notification_diagnostics() {
+                                Ok(path) => eprintln!("[bento] diagnostik notifikasi ditulis ke {path}"),
+                                Err(err) => eprintln!("[bento] diagnostik notifikasi gagal: {err}"),
                             }
                         }
                         "quit" => {
@@ -467,6 +491,7 @@ pub fn run() {
             get_cursor_state,
             get_device_location,
             trigger_notification_test,
+            dump_notification_diagnostics,
             answer_system_call,
             decline_system_call,
             end_system_call

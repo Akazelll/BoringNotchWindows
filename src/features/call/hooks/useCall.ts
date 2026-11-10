@@ -44,15 +44,27 @@ export function useCall() {
 
 
   const simulateIncomingCall = useCallback(
-    (name = "Ibu", appSource: CallInfo["appSource"] = "whatsapp") => {
+    (
+      name = "Ibu",
+      appSource: CallInfo["appSource"] = "whatsapp",
+      state: CallInfo["state"] = "incoming"
+    ) => {
       setCall({
         callerName: name,
-        callerNumber: "Panggilan Suara Masuk...",
+        callerNumber: state === "outgoing" ? "Memanggil..." : "Panggilan Suara Masuk...",
         appSource,
-        state: "incoming",
+        state,
         durationSec: 0,
         isMuted: false,
       });
+
+      // Simulasi panggilan keluar ikut diangkat setelah 4 detik supaya satu shortcut
+      // bisa menguji fase memanggil sekaligus fase tersambung.
+      if (state === "outgoing") {
+        window.setTimeout(() => {
+          setCall((prev) => (prev && prev.state === "outgoing" ? { ...prev, state: "active" } : prev));
+        }, 4000);
+      }
     },
     []
   );

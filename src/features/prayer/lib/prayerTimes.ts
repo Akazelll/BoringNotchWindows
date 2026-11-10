@@ -40,6 +40,32 @@ export function formatCoords(latitude: number, longitude: number): string {
   return `${latitude.toFixed(2)}, ${longitude.toFixed(2)}`;
 }
 
+/** Jari-jari bumi rata-rata, km. Bola dianggap cukup: ini hanya untuk ambang "masih dekat". */
+const EARTH_RADIUS_KM = 6371;
+
+/**
+ * Jarak lingkaran besar antara dua koordinat, km.
+ *
+ * Dipakai untuk memutuskan apakah nama kota lama masih boleh dipakai saat reverse geocode
+ * gagal: nama lama berguna kalau perangkat belum pindah jauh, menyesatkan kalau sudah.
+ */
+export function haversineKm(
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number
+): number {
+  if (![lat1, lon1, lat2, lon2].every(Number.isFinite)) return Number.NaN;
+
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return 2 * EARTH_RADIUS_KM * Math.asin(Math.min(1, Math.sqrt(a)));
+}
+
 export interface ZoneWallClock {
   dateKey: string;
   minutes: number;

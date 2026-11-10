@@ -11,13 +11,82 @@ pub struct AppNotification {
     pub is_call: bool,
 }
 
+/// Nama tampilan aplikasi untuk notifikasi. Tidak dipakai untuk mengenali aplikasi: ia
+/// bergantung bahasa Windows dan bisa kosong, sedangkan AUMID stabil.
+#[cfg(windows)]
+const UNKNOWN_APP_NAME: &str = "Aplikasi";
+
+/// Kenali aplikasi dari AUMID + nama tampilan.
+///
+/// AUMID adalah kunci stabil dan tidak terlokalisasi, mis. WhatsApp
+/// `5319275A.WhatsAppDesktop_cv1g1gvanyjgm!App`. Nama tampilan tetap ikut dicocokkan karena
+/// di beberapa mesin `AppInfo()` tidak mengisi AUMID. Mengenali dari AUMID dulu membuat
+/// deteksi tidak lagi bergantung pada `DisplayName()` yang bisa gagal atau kosong.
+///
+/// Kedua argumen dinormalkan di sini, jadi pemanggil boleh meneruskan huruf besar/kecil apa pun.
+///
+/// Nilai `""` berarti aplikasi tidak dikenali. Pemanggil WAJIB memperlakukannya sebagai
+/// "tampilkan saja", bukan "buang": notifikasi yang sah dari aplikasi di luar daftar ini
+/// sebelumnya dibuang tanpa jejak.
+#[cfg(windows)]
+fn classify_app(aumid: &str, name: &str) -> &'static str {
+    let hay = format!("{} {}", aumid, name).to_lowercase();
+
+    if hay.contains("whatsapp") {
+        "whatsapp"
+    } else if hay.contains("discord") {
+        "discord"
+    } else if hay.contains("telegram") {
+        "telegram"
+    } else if hay.contains("teams") {
+        "teams"
+    } else if hay.contains("phone link")
+        || hay.contains("yourphone")
+        || hay.contains("your phone")
+        || hay.contains("sambungan ponsel")
+        || hay.contains("telepon")
+    {
+        "phone"
+    } else if hay.contains("spotify") {
+        "spotify"
+    } else if hay.contains("chrome")
+        || hay.contains("msedge")
+        || hay.contains("edge")
+        || hay.contains("firefox")
+        || hay.contains("browser")
+    {
+        "chrome"
+    } else {
+        ""
+    }
+}
+
+/// Teks yang benar-benar noise dan tidak pernah ingin ditampilkan.
+///
+/// Ini menggantikan `|| app_type == "system"` yang dulu ada di sini: filter itu membuang
+/// SEMUA aplikasi yang tidak ada di daftar putih, sehingga notifikasi sah dari aplikasi lain
+/// (dan notifikasi yang nama tampilannya gagal dibaca) hilang tanpa jejak.
+#[cfg(windows)]
+fn is_known_noise(full_text: &str) -> bool {
+    full_text.contains("mode resume")
+        || full_text.contains("system mode")
+        || full_text.contains("mode pemulihan")
+        || full_text.contains("headset")
+        || full_text.contains("headphone")
+        || full_text.contains("earphone")
+        || full_text.contains("hands-free")
+        || full_text.contains("siap digunakan")
+        || full_text.contains("ready to use")
+        || full_text.contains("tersambung ke")
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CallEventInfo {
     pub caller_name: String,
     pub caller_number: Option<String>,
     pub app_source: String,
-    pub state: String, // "incoming" | "active"
+    pub state: String, // "incoming" (berdering) | "outgoing" (memanggil) | "active" (tersambung)
     pub notif_id: Option<u32>,
 }
 
@@ -91,41 +160,22 @@ pub fn fetch_active_notifications() -> Vec<AppNotification> {
     for i in 0..count {
         if let Ok(n) = notifs.GetAt(i) {
             let id = n.Id().unwrap_or(0);
-            let app_name = n
-                .AppInfo()
-                .ok()
+            let app_info = n.AppInfo().ok();
+            let app_name = app_info
+                .as_ref()
                 .and_then(|a| a.DisplayInfo().ok())
                 .and_then(|d| d.DisplayName().ok())
                 .map(|s| s.to_string())
-                .unwrap_or_else(|| "System".to_string());
+                .filter(|s| !s.trim().is_empty())
+                .unwrap_or_else(|| UNKNOWN_APP_NAME.to_string());
+            let aumid_lower = app_info
+                .as_ref()
+                .and_then(|a| a.AppUserModelId().ok())
+                .map(|s| s.to_string().to_lowercase())
+                .unwrap_or_default();
 
             let name_lower = app_name.to_lowercase();
-            let is_phone_link = (name_lower.contains("phone link")
-                || name_lower.contains("your phone")
-                || name_lower.contains("sambungan ponsel")
-                || name_lower == "phone"
-                || name_lower.contains("telepon"))
-                && !name_lower.contains("headphone")
-                && !name_lower.contains("earphone")
-                && !name_lower.contains("headset");
-
-            let mut app_type = if name_lower.contains("whatsapp") {
-                "whatsapp".to_string()
-            } else if name_lower.contains("discord") {
-                "discord".to_string()
-            } else if name_lower.contains("telegram") {
-                "telegram".to_string()
-            } else if name_lower.contains("teams") {
-                "teams".to_string()
-            } else if is_phone_link {
-                "phone".to_string()
-            } else if name_lower.contains("spotify") {
-                "spotify".to_string()
-            } else if name_lower.contains("chrome") || name_lower.contains("edge") || name_lower.contains("browser") {
-                "chrome".to_string()
-            } else {
-                "system".to_string()
-            };
+            let mut app_type = classify_app(&aumid_lower, &name_lower).to_string();
 
             // Extract ALL text elements across ALL visual bindings
             let mut all_texts = Vec::new();
@@ -173,20 +223,10 @@ pub fn fetch_active_notifications() -> Vec<AppNotification> {
                 app_type = "whatsapp".to_string();
             }
 
-            // Filter out system power mode, headset/audio device connection noise, or non-whitelisted apps
-            let is_hardware_or_system_noise = full_text.contains("mode resume")
-                || full_text.contains("system mode")
-                || full_text.contains("mode pemulihan")
-                || full_text.contains("headset")
-                || full_text.contains("headphone")
-                || full_text.contains("earphone")
-                || full_text.contains("hands-free")
-                || full_text.contains("siap digunakan")
-                || full_text.contains("ready to use")
-                || full_text.contains("tersambung ke")
-                || app_type == "system";
-
-            if is_hardware_or_system_noise {
+            // Hanya buang noise yang benar-benar dikenal. Aplikasi asing (app_type kosong)
+            // sekarang DITAMPILKAN: fitur notifikasi harus gagal ke arah menampilkan, bukan
+            // ke arah menyembunyikan seperti filter `app_type == "system"` yang lama.
+            if is_known_noise(&full_text) {
                 continue;
             }
 
@@ -242,6 +282,155 @@ pub fn fetch_active_notifications() -> Vec<AppNotification> {
 #[cfg(not(windows))]
 pub fn fetch_active_notifications() -> Vec<AppNotification> {
     Vec::new()
+}
+
+/// Satu baris laporan untuk tiap notifikasi mentah, plus alasan bila tidak dipakai.
+///
+/// `eprintln!` mati di build rilis (`windows_subsystem = "windows"`), jadi kegagalan pembacaan
+/// notifikasi tidak meninggalkan jejak apa pun. Laporan ini ditulis ke berkas supaya bisa
+/// dibaca dari aplikasi terpasang.
+#[cfg(windows)]
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NotificationDiagnostic {
+    pub access_status: String,
+    pub raw_count: usize,
+    pub kept: usize,
+    pub items: Vec<DiagnosticItem>,
+}
+
+#[cfg(windows)]
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiagnosticItem {
+    pub id: u32,
+    pub aumid: String,
+    pub app_name: String,
+    pub title: String,
+    pub message: String,
+    pub app_type: String,
+    /// "" bila lolos, atau alasan penolakan: "noise" / "kosong".
+    pub rejected: String,
+}
+
+/// Kumpulkan laporan diagnostik notifikasi dan tulis ke berkas. Mengembalikan path berkasnya.
+///
+/// Read-only terhadap sistem: hanya membaca daftar notifikasi, tidak mengubah apa pun.
+#[cfg(windows)]
+pub fn write_notification_diagnostics() -> Result<String, String> {
+    use windows::UI::Notifications::Management::{UserNotificationListener, UserNotificationListenerAccessStatus};
+    use windows::UI::Notifications::NotificationKinds;
+
+    let mut report = NotificationDiagnostic {
+        access_status: "tidak diketahui".to_string(),
+        raw_count: 0,
+        kept: 0,
+        items: Vec::new(),
+    };
+
+    let listener = match UserNotificationListener::Current() {
+        Ok(l) => l,
+        Err(e) => return Err(format!("UserNotificationListener::Current() gagal: {e:?}")),
+    };
+
+    if let Ok(status) = listener.GetAccessStatus() {
+        report.access_status = if status == UserNotificationListenerAccessStatus::Allowed {
+            "Allowed".to_string()
+        } else if status == UserNotificationListenerAccessStatus::Denied {
+            "Denied".to_string()
+        } else {
+            "Unspecified".to_string()
+        };
+    }
+
+    let notifs = listener
+        .GetNotificationsAsync(NotificationKinds::Toast)
+        .map_err(|e| format!("GetNotificationsAsync gagal: {e:?}"))?
+        .get()
+        .map_err(|e| format!("GetNotificationsAsync op.get() gagal: {e:?}"))?;
+
+    let count = notifs.Size().unwrap_or(0) as usize;
+    report.raw_count = count;
+
+    for i in 0..count {
+        let Ok(n) = notifs.GetAt(i as u32) else {
+            continue;
+        };
+        let id = n.Id().unwrap_or(0);
+        let app_info = n.AppInfo().ok();
+        let app_name = app_info
+            .as_ref()
+            .and_then(|a| a.DisplayInfo().ok())
+            .and_then(|d| d.DisplayName().ok())
+            .map(|s| s.to_string())
+            .unwrap_or_default();
+        let aumid = app_info
+            .as_ref()
+            .and_then(|a| a.AppUserModelId().ok())
+            .map(|s| s.to_string())
+            .unwrap_or_default();
+
+        // Kumpulkan seluruh teks visual, sama seperti jalur produksi.
+        let mut all_texts: Vec<String> = Vec::new();
+        if let Ok(notif) = n.Notification() {
+            if let Ok(visual) = notif.Visual() {
+                if let Ok(bindings) = visual.Bindings() {
+                    for b in 0..bindings.Size().unwrap_or(0) {
+                        if let Ok(binding) = bindings.GetAt(b) {
+                            if let Ok(texts) = binding.GetTextElements() {
+                                for t in 0..texts.Size().unwrap_or(0) {
+                                    if let Ok(te) = texts.GetAt(t) {
+                                        if let Ok(val) = te.Text() {
+                                            let s = val.to_string().trim().to_string();
+                                            if !s.is_empty() {
+                                                all_texts.push(s);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        let title = all_texts.first().cloned().unwrap_or_else(|| app_name.clone());
+        let message = if all_texts.len() > 1 { all_texts[1..].join(" - ") } else { String::new() };
+        let full_text = format!("{} {} {}", app_name, title, message).to_lowercase();
+        let app_type = classify_app(&aumid, &app_name).to_string();
+
+        let rejected = if title.trim().is_empty() && message.trim().is_empty() {
+            "kosong"
+        } else if is_known_noise(&full_text) {
+            "noise"
+        } else {
+            ""
+        };
+        if rejected.is_empty() {
+            report.kept += 1;
+        }
+
+        report.items.push(DiagnosticItem {
+            id,
+            aumid,
+            app_name,
+            title,
+            message,
+            app_type,
+            rejected: rejected.to_string(),
+        });
+    }
+
+    let path = std::env::temp_dir().join("bento-notif-diag.json");
+    let json = serde_json::to_string_pretty(&report).map_err(|e| format!("serialisasi gagal: {e}"))?;
+    std::fs::write(&path, json).map_err(|e| format!("tulis {} gagal: {e}", path.display()))?;
+    Ok(path.display().to_string())
+}
+
+#[cfg(not(windows))]
+pub fn write_notification_diagnostics() -> Result<String, String> {
+    Err("diagnostik hanya tersedia di Windows".to_string())
 }
 
 // Win32 Window Scanner: Detect if a Communication app has an incoming/active call window
@@ -311,11 +500,13 @@ pub fn detect_call_from_windows() -> Option<CallEventInfo> {
                 || title_lower.contains("video");
 
             if is_call_win && title != "WhatsApp" {
+                let name = sanitize_caller_name(&title);
                 let mut lock = FOUND_CALL.lock().unwrap();
                 *lock = Some(CallEventInfo {
-                    caller_name: title.clone(),
+                    caller_name: if name.is_empty() { title.clone() } else { name },
                     caller_number: Some("WhatsApp Call".to_string()),
                     app_source: "whatsapp".to_string(),
+                    // Nilai sementara: ditimpa probe_call_state() setelah EnumWindows.
                     state: "incoming".to_string(),
                     notif_id: None,
                 });
@@ -333,11 +524,13 @@ pub fn detect_call_from_windows() -> Option<CallEventInfo> {
                 || title_lower.contains("telepon");
 
             if is_call {
+                let name = sanitize_caller_name(&title);
                 let mut lock = FOUND_CALL.lock().unwrap();
                 *lock = Some(CallEventInfo {
-                    caller_name: title.clone(),
+                    caller_name: if name.is_empty() { title.clone() } else { name },
                     caller_number: Some("Phone Link".to_string()),
                     app_source: "phone".to_string(),
+                    // Nilai sementara: ditimpa probe_call_state() setelah EnumWindows.
                     state: "incoming".to_string(),
                     notif_id: None,
                 });
@@ -351,11 +544,13 @@ pub fn detect_call_from_windows() -> Option<CallEventInfo> {
         // 3. Telegram Call Window
         if exe_name.contains("telegram") {
             if title_lower.contains("call") || title_lower.contains("panggilan") {
+                let name = sanitize_caller_name(&title);
                 let mut lock = FOUND_CALL.lock().unwrap();
                 *lock = Some(CallEventInfo {
-                    caller_name: title.clone(),
+                    caller_name: if name.is_empty() { title.clone() } else { name },
                     caller_number: Some("Telegram Call".to_string()),
                     app_source: "telegram".to_string(),
+                    // Nilai sementara: ditimpa probe_call_state() setelah EnumWindows.
                     state: "incoming".to_string(),
                     notif_id: None,
                 });
@@ -369,11 +564,13 @@ pub fn detect_call_from_windows() -> Option<CallEventInfo> {
         // 4. Discord Voice / Call
         if exe_name.contains("discord") {
             if title_lower.contains("incoming call") || title_lower.contains("panggilan masuk") {
+                let name = sanitize_caller_name(&title);
                 let mut lock = FOUND_CALL.lock().unwrap();
                 *lock = Some(CallEventInfo {
-                    caller_name: title.clone(),
+                    caller_name: if name.is_empty() { title.clone() } else { name },
                     caller_number: Some("Discord".to_string()),
                     app_source: "discord".to_string(),
+                    // Nilai sementara: ditimpa probe_call_state() setelah EnumWindows.
                     state: "incoming".to_string(),
                     notif_id: None,
                 });
@@ -394,6 +591,17 @@ pub fn detect_call_from_windows() -> Option<CallEventInfo> {
 
     unsafe {
         let _ = EnumWindows(Some(enum_call_proc), LPARAM(0));
+    }
+
+    // Arah panggilan ditentukan di sini, bukan di dalam callback: memanggil COM di
+    // tengah enumerasi berisiko. Empat blok di atas menulis "incoming" sebagai nilai
+    // cadangan untuk kasus LAST_CALL_HWND kosong; bila tidak kosong, nilainya ditimpa.
+    if let Some(h) = LAST_CALL_HWND.lock().ok().and_then(|l| *l) {
+        if let Ok(mut lock) = FOUND_CALL.lock() {
+            if let Some(c) = lock.as_mut() {
+                c.state = probe_call_state(HWND(h as *mut _)).to_string();
+            }
+        }
     }
 
     let result = FOUND_CALL.lock().unwrap().clone();
@@ -473,6 +681,77 @@ const HANGUP_WEAK: &[&str] = &["akhiri", "end", "hang", "leave", "tutup", "batal
 #[cfg(windows)]
 const ACCEPT_KEYWORDS: &[&str] = &["terima", "accept", "jawab", "answer", "join", "gabung"];
 
+// Kehadiran tombol ini menandai panggilan sudah tersambung. Dipakai bersama arah
+// panggilan: tombol "Terima" hanya ada saat berdering, tombol bisu hanya saat tersambung.
+#[cfg(windows)]
+const MUTE_KEYWORDS: &[&str] = &["bisu", "mute", "matikan mikrofon", "deafen"];
+
+/// Keputusan arah dari sinyal tombol, dipisah dari pembacaan UIA supaya bisa diuji
+/// tanpa COM. Berdering selalu punya tombol Terima; panggilan keluar tidak pernah.
+#[cfg(windows)]
+fn state_from_signals(has_accept: bool, has_mute: bool) -> &'static str {
+    if has_accept {
+        "incoming"
+    } else if has_mute {
+        "active"
+    } else {
+        "outgoing"
+    }
+}
+
+/// Token terakhir berbentuk timer: "0:12", "00:12", atau "1:02:33".
+/// Bagian menit/jam boleh satu digit, detik harus selalu dua digit.
+#[cfg(windows)]
+fn is_timer(token: &str) -> bool {
+    let mut parts = token.split(':');
+    let digits = |p: &str, n: usize| p.len() == n && p.chars().all(|c| c.is_ascii_digit());
+
+    let (Some(a), Some(b)) = (parts.next(), parts.next()) else {
+        return false;
+    };
+    if !(1..=2).contains(&a.len()) || !a.chars().all(|c| c.is_ascii_digit()) || !digits(b, 2) {
+        return false;
+    }
+    match parts.next() {
+        None => true,
+        Some(c) => digits(c, 2) && parts.next().is_none(),
+    }
+}
+
+/// Buang akhiran timer beserta pemisah tepat sebelumnya: "Budi - 00:12" -> "Budi".
+#[cfg(windows)]
+fn strip_trailing_timer(s: &str) -> &str {
+    let t = s.trim_end();
+    let start = t
+        .rfind(|c: char| c.is_whitespace() || matches!(c, '-' | '·' | '(' | ')'))
+        .map(|i| i + 1)
+        .unwrap_or(0);
+
+    if !is_timer(t[start..].trim_end_matches(')')) {
+        return t;
+    }
+    t[..start].trim_end_matches([' ', '-', '·', '('])
+}
+
+/// Bersihkan judul window menjadi nama kontak.
+///
+/// Judul panggilan keluar sering berbentuk "Memanggil Budi - 00:12". Timer itu berubah
+/// tiap detik, dan `call_key` di lib.rs memuat `caller_name`, jadi judul yang berkedip
+/// akan memicu emit tiap detik. Hasil kosong berarti pemanggil memakai judul mentah.
+#[cfg(windows)]
+fn sanitize_caller_name(raw: &str) -> String {
+    let mut s = raw.trim();
+
+    for prefix in ["panggilan ke", "memanggil", "calling"] {
+        if matches!(s.get(..prefix.len()), Some(p) if p.eq_ignore_ascii_case(prefix)) {
+            s = s[prefix.len()..].trim_start_matches([' ', '.', ':', '-']);
+            break;
+        }
+    }
+
+    strip_trailing_timer(s).trim().to_string()
+}
+
 #[cfg(windows)]
 fn keyword_matches(text: &str, kw: &str, whole_word: bool) -> bool {
     if !whole_word {
@@ -481,113 +760,138 @@ fn keyword_matches(text: &str, kw: &str, whole_word: bool) -> bool {
     text.split(|c: char| !c.is_alphanumeric()).any(|t| t == kw)
 }
 
+/// Cari elemen (tombol atau apa pun yang bisa di-invoke) yang cocok salah satu kata
+/// kunci di dalam `hwnd`. Murni pembacaan: tidak mengangkat jendela dan tidak mengklik
+/// apa pun, sehingga aman dipanggil dari jalur deteksi.
 #[cfg(windows)]
-fn try_click_call_button(keywords: &[&str], whole_word: bool) -> bool {
+fn find_element_matching(
+    hwnd: windows::Win32::Foundation::HWND,
+    keywords: &[&str],
+    whole_word: bool,
+) -> Option<(
+    windows::Win32::UI::Accessibility::IUIAutomationElement,
+    Option<windows::Win32::UI::Accessibility::IUIAutomationInvokePattern>,
+)> {
     use windows::Win32::System::Com::{CoInitializeEx, CoCreateInstance, COINIT_MULTITHREADED, CLSCTX_INPROC_SERVER};
     use windows::Win32::UI::Accessibility::{
         CUIAutomation, IUIAutomation, IUIAutomationInvokePattern,
         TreeScope_Descendants, UIA_InvokePatternId, UIA_ButtonControlTypeId,
     };
+
+    unsafe {
+        let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
+
+        let automation: IUIAutomation = CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER).ok()?;
+        let condition = automation.CreateTrueCondition().ok()?;
+        let elem = automation.ElementFromHandle(hwnd).ok()?;
+        let children = elem.FindAll(TreeScope_Descendants, &condition).ok()?;
+
+        let len = children.Length().unwrap_or(0);
+        for i in 0..len {
+            let Ok(child) = children.GetElement(i) else {
+                continue;
+            };
+
+            // Buang teks statis/label: hanya tombol, atau elemen yang benar-benar
+            // bisa di-invoke, yang boleh dianggap sebagai tombol panggilan.
+            let is_button = child
+                .CurrentControlType()
+                .map(|t| t == UIA_ButtonControlTypeId)
+                .unwrap_or(false);
+            let invoker = child
+                .GetCurrentPatternAs::<IUIAutomationInvokePattern>(UIA_InvokePatternId)
+                .ok();
+            if !is_button && invoker.is_none() {
+                continue;
+            }
+
+            let name = child.CurrentName().map(|s| s.to_string().to_lowercase()).unwrap_or_default();
+            let auto_id = child.CurrentAutomationId().map(|s| s.to_string().to_lowercase()).unwrap_or_default();
+            let help = child.CurrentHelpText().map(|s| s.to_string().to_lowercase()).unwrap_or_default();
+
+            let matches = keywords.iter().any(|&k| {
+                keyword_matches(&name, k, whole_word)
+                    || keyword_matches(&auto_id, k, whole_word)
+                    || keyword_matches(&help, k, whole_word)
+            });
+
+            if matches {
+                return Some((child, invoker));
+            }
+        }
+    }
+
+    None
+}
+
+/// Arah panggilan pada jendela panggilan: berdering, memanggil, atau tersambung.
+#[cfg(windows)]
+fn probe_call_state(hwnd: windows::Win32::Foundation::HWND) -> &'static str {
+    let has_accept = find_element_matching(hwnd, ACCEPT_KEYWORDS, false).is_some();
+    let has_mute = !has_accept && find_element_matching(hwnd, MUTE_KEYWORDS, false).is_some();
+    state_from_signals(has_accept, has_mute)
+}
+
+#[cfg(windows)]
+fn try_click_call_button(keywords: &[&str], whole_word: bool) -> bool {
     use windows::Win32::UI::WindowsAndMessaging::{SetCursorPos, GetCursorPos, ShowWindow, SetForegroundWindow, SW_RESTORE, IsWindow};
     use windows::Win32::Foundation::{HWND, POINT};
 
     const MOUSEEVENTF_LEFTDOWN: u32 = 0x0002;
     const MOUSEEVENTF_LEFTUP: u32 = 0x0004;
 
-    unsafe {
-        let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
+    let mut candidate_hwnds = Vec::new();
 
-        let automation: IUIAutomation = match CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER) {
-            Ok(a) => a,
-            Err(_) => return false,
+    // 1. Check LAST_CALL_HWND first
+    if let Ok(lock) = LAST_CALL_HWND.lock() {
+        if let Some(h) = *lock {
+            let hwnd = HWND(h as *mut _);
+            if unsafe { IsWindow(hwnd).as_bool() } {
+                candidate_hwnds.push(hwnd);
+            }
+        }
+    }
+
+    // 2. Add all communication windows (WhatsApp, Phone Link, etc.)
+    for h in get_all_communication_hwnds() {
+        if !candidate_hwnds.contains(&h) {
+            candidate_hwnds.push(h);
+        }
+    }
+
+    // Inspect all candidate windows via UI Automation
+    for hwnd in candidate_hwnds {
+        let Some((child, invoker)) = find_element_matching(hwnd, keywords, whole_word) else {
+            continue;
         };
 
-        let mut candidate_hwnds = Vec::new();
+        unsafe {
+            // Bring target window to front so click/invoke lands reliably
+            let _ = ShowWindow(hwnd, SW_RESTORE);
+            let _ = SetForegroundWindow(hwnd);
+            std::thread::sleep(std::time::Duration::from_millis(30));
 
-        // 1. Check LAST_CALL_HWND first
-        if let Ok(lock) = LAST_CALL_HWND.lock() {
-            if let Some(h) = *lock {
-                let hwnd = HWND(h as *mut _);
-                if IsWindow(hwnd).as_bool() {
-                    candidate_hwnds.push(hwnd);
+            // 1. Try IUIAutomationInvokePattern
+            if let Some(invoker) = invoker {
+                if invoker.Invoke().is_ok() {
+                    return true;
                 }
             }
-        }
 
-        // 2. Add all communication windows (WhatsApp, Phone Link, etc.)
-        for h in get_all_communication_hwnds() {
-            if !candidate_hwnds.contains(&h) {
-                candidate_hwnds.push(h);
-            }
-        }
+            // 2. Try physical mouse click on button coordinates
+            if let Ok(rect) = child.CurrentBoundingRectangle() {
+                let x = (rect.left + rect.right) / 2;
+                let y = (rect.top + rect.bottom) / 2;
+                if x > 0 && y > 0 && rect.right > rect.left {
+                    let mut pt = POINT::default();
+                    let _ = GetCursorPos(&mut pt);
 
-        let condition = match automation.CreateTrueCondition() {
-            Ok(c) => c,
-            Err(_) => return false,
-        };
-
-        // Inspect all candidate windows via UI Automation
-        for hwnd in candidate_hwnds {
-            if let Ok(elem) = automation.ElementFromHandle(hwnd) {
-                if let Ok(children) = elem.FindAll(TreeScope_Descendants, &condition) {
-                    let len = children.Length().unwrap_or(0);
-                    for i in 0..len {
-                        if let Ok(child) = children.GetElement(i) {
-                            // Buang teks statis/label: hanya tombol, atau elemen yang
-                            // benar-benar bisa di-invoke, yang boleh ikut diklik.
-                            let is_button = child
-                                .CurrentControlType()
-                                .map(|t| t == UIA_ButtonControlTypeId)
-                                .unwrap_or(false);
-                            let invoker = child
-                                .GetCurrentPatternAs::<IUIAutomationInvokePattern>(UIA_InvokePatternId)
-                                .ok();
-                            if !is_button && invoker.is_none() {
-                                continue;
-                            }
-
-                            let name = child.CurrentName().map(|s| s.to_string().to_lowercase()).unwrap_or_default();
-                            let auto_id = child.CurrentAutomationId().map(|s| s.to_string().to_lowercase()).unwrap_or_default();
-                            let help = child.CurrentHelpText().map(|s| s.to_string().to_lowercase()).unwrap_or_default();
-
-                            let matches = keywords.iter().any(|&k| {
-                                keyword_matches(&name, k, whole_word)
-                                    || keyword_matches(&auto_id, k, whole_word)
-                                    || keyword_matches(&help, k, whole_word)
-                            });
-
-                            if matches {
-                                // Bring target window to front so click/invoke lands reliably
-                                let _ = ShowWindow(hwnd, SW_RESTORE);
-                                let _ = SetForegroundWindow(hwnd);
-                                std::thread::sleep(std::time::Duration::from_millis(30));
-
-                                // 1. Try IUIAutomationInvokePattern
-                                if let Some(invoker) = invoker {
-                                    if invoker.Invoke().is_ok() {
-                                        return true;
-                                    }
-                                }
-
-                                // 2. Try physical mouse click on button coordinates
-                                if let Ok(rect) = child.CurrentBoundingRectangle() {
-                                    let x = (rect.left + rect.right) / 2;
-                                    let y = (rect.top + rect.bottom) / 2;
-                                    if x > 0 && y > 0 && rect.right > rect.left {
-                                        let mut pt = POINT::default();
-                                        let _ = GetCursorPos(&mut pt);
-
-                                        let _ = SetCursorPos(x, y);
-                                        mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0);
-                                        std::thread::sleep(std::time::Duration::from_millis(25));
-                                        mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, 0);
-                                        let _ = SetCursorPos(pt.x, pt.y);
-                                        return true;
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    let _ = SetCursorPos(x, y);
+                    mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0);
+                    std::thread::sleep(std::time::Duration::from_millis(25));
+                    mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, 0);
+                    let _ = SetCursorPos(pt.x, pt.y);
+                    return true;
                 }
             }
         }
@@ -725,5 +1029,100 @@ mod tests {
         for k in HANGUP_WEAK {
             assert!(!HANGUP_STRONG.contains(k), "{} ada di kedua daftar", k);
         }
+    }
+
+    /// Diagnostik manual: jalankan dengan
+    /// `cargo test --lib diagnostics_dump -- --ignored --nocapture`
+    ///
+    /// Tidak dijalankan bersama test lain karena hasilnya bergantung keadaan Windows di mesin
+    /// itu (jumlah notifikasi yang sedang ada), bukan perilaku kode.
+    #[test]
+    #[ignore]
+    fn diagnostics_dump_reads_windows_state() {
+        match write_notification_diagnostics() {
+            Ok(path) => {
+                let body = std::fs::read_to_string(&path).unwrap_or_default();
+                println!("=== {path} ===\n{body}");
+            }
+            Err(err) => println!("=== diagnostik gagal: {err} ==="),
+        }
+    }
+
+    #[test]
+    fn app_is_recognized_from_aumid_even_without_display_name() {
+        // Kasus yang dulu membuang notifikasi WhatsApp: DisplayName gagal, jadi hanya AUMID
+        // yang tersedia. AUMID asli dari registry mesin ini.
+        assert_eq!(
+            classify_app("5319275a.whatsappdesktop_cv1g1gvanyjgm!app", ""),
+            "whatsapp"
+        );
+        assert_eq!(classify_app("com.squirrel.discord.discord", ""), "discord");
+        assert_eq!(
+            classify_app("microsoft.yourphone_8wekyb3d8bbwe!yourphone", ""),
+            "phone"
+        );
+        assert_eq!(classify_app("", "telegram desktop"), "telegram");
+        assert_eq!(classify_app("", "microsoft teams"), "teams");
+        assert_eq!(classify_app("", "spotify"), "spotify");
+    }
+
+    #[test]
+    fn unknown_app_is_not_discarded() {
+        // Inti perbaikan: aplikasi yang tidak dikenal mengembalikan "" (tampilkan), bukan
+        // jenis palsu yang lalu dibuang. Dulu semuanya jatuh ke "system" lalu dibuang.
+        assert_eq!(classify_app("some.random.app", "Some Random App"), "");
+        assert_eq!(classify_app("", ""), "");
+
+        // Dan aturan noise tidak boleh menangkap aplikasi yang tidak dikenal.
+        assert!(!is_known_noise("some random app halo apa kabar"));
+
+        // Frasa noise yang dikenal tetap tersaring.
+        assert!(is_known_noise("headset bluetooth tersambung ke laptop"));
+        assert!(is_known_noise("system mode resume"));
+        assert!(is_known_noise("perangkat siap digunakan"));
+    }
+
+    #[test]
+    fn classification_normalizes_case_itself() {
+        // Fungsi menormalkan sendiri, jadi pemanggil tidak bisa salah dengan huruf besar.
+        assert_eq!(classify_app("5319275A.WhatsAppDesktop_x!App", "WHATSAPP"), "whatsapp");
+        assert_eq!(classify_app("", "Telegram Desktop"), "telegram");
+        assert_eq!(classify_app("", "Headset"), "");
+    }
+
+    #[test]
+    fn accept_button_wins_over_mute_button() {
+        // Berdering selalu punya tombol Terima, jadi arahnya menang atas tombol bisu.
+        assert_eq!(state_from_signals(true, true), "incoming");
+        assert_eq!(state_from_signals(true, false), "incoming");
+        // Tanpa Terima: tombol bisu berarti sudah tersambung, bukan memanggil.
+        assert_eq!(state_from_signals(false, true), "active");
+        // Tanpa keduanya: panggilan keluar sedang memanggil.
+        assert_eq!(state_from_signals(false, false), "outgoing");
+    }
+
+    #[test]
+    fn timer_tokens_are_recognized() {
+        assert!(is_timer("0:12"));
+        assert!(is_timer("00:12"));
+        assert!(is_timer("1:02:33"));
+        assert!(!is_timer("12:5"));   // detik harus dua digit
+        assert!(!is_timer("123:45")); // menit maksimal dua digit
+        assert!(!is_timer("12:345"));
+        assert!(!is_timer("abc"));
+        assert!(!is_timer(""));
+    }
+
+    #[test]
+    fn caller_name_drops_calling_prefix_and_timer_tail() {
+        assert_eq!(sanitize_caller_name("Memanggil Budi - 00:12"), "Budi");
+        assert_eq!(sanitize_caller_name("Calling Budi 0:05"), "Budi");
+        assert_eq!(sanitize_caller_name("Panggilan ke Budi"), "Budi");
+        // Judul bersih harus lewat apa adanya, termasuk nama ber-tanda hubung.
+        assert_eq!(sanitize_caller_name("Budi Santoso"), "Budi Santoso");
+        assert_eq!(sanitize_caller_name("Ibu-Ani"), "Ibu-Ani");
+        // Judul yang seluruhnya berupa timer jadi kosong; pemanggil memakai judul
+        // mentah sebagai cadangan, jadi nama tidak pernah hilang.
+        assert_eq!(sanitize_caller_name("12:30"), "");
     }
 }

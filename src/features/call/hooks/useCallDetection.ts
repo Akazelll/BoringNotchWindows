@@ -16,22 +16,25 @@ import {
 export function useCallDetection(
   setCall: Dispatch<SetStateAction<CallInfo | null>>,
   isSuppressed: () => boolean,
-  simulateIncomingCall: (name?: string, appSource?: CallInfo["appSource"]) => void
+  simulateIncomingCall: (
+    name?: string,
+    appSource?: CallInfo["appSource"],
+    state?: CallInfo["state"]
+  ) => void
 ) {
   useEffect(() => {
     let unlistenNotifs: (() => void) | undefined;
     let unlistenCall: (() => void) | undefined;
 
-    // 1. Initial check for any active incoming call
+    // 1. Initial check for any active call
     getActiveCall()
       .then((activeCall) => {
         if (activeCall) {
-          // ANY newly detected call must start in 'incoming' state
           setCall({
             callerName: activeCall.callerName || "Panggilan Masuk",
             callerNumber: activeCall.callerNumber || undefined,
             appSource: (activeCall.appSource as CallInfo["appSource"]) || "whatsapp",
-            state: "incoming",
+            state: activeCall.state ?? "incoming",
             durationSec: 0,
             isMuted: false,
             notifId: activeCall.notifId,
@@ -47,15 +50,14 @@ export function useCallDetection(
         if (isSuppressed()) return;
         setCall((prev) => {
           // If the user already accepted the call locally in bento, keep it active
-          if (prev && prev.state === "active") {
+          if (prev && (prev.state === "active" || prev.state === "outgoing")) {
             return prev;
           }
-          // Incoming calls must always be 'incoming'
           return {
             callerName: payload.callerName || "Panggilan Masuk",
             callerNumber: payload.callerNumber || undefined,
             appSource: (payload.appSource as CallInfo["appSource"]) || "whatsapp",
-            state: "incoming",
+            state: payload.state ?? "incoming",
             durationSec: 0,
             isMuted: false,
             notifId: payload.notifId,
@@ -65,7 +67,7 @@ export function useCallDetection(
         // When backend reports call ended / dismissed:
         setCall((prev) => {
           if (!prev) return null;
-          if (prev.state === "incoming") {
+          if (prev.state === "incoming" || prev.state === "outgoing") {
             return null;
           }
           if (prev.state === "active") {
@@ -94,14 +96,17 @@ export function useCallDetection(
       if (callNotif) {
         if (isSuppressed()) return;
         setCall((prev) => {
-          // Keep active if user already accepted
-          if (prev && prev.state === "active") {
+          // Panggilan yang sedang berjalan tidak boleh ditimpa toast: panggilan keluar
+          // tidak pernah menghasilkan toast, sehingga toast lama bisa menyetel ulang
+          // overlay menjadi "Panggilan masuk" di tengah percakapan.
+          if (prev && (prev.state === "active" || prev.state === "outgoing")) {
             return prev;
           }
           return {
             callerName: callNotif.title || callNotif.appName,
             callerNumber: callNotif.message || undefined,
             appSource: (callNotif.appType as CallInfo["appSource"]) || "whatsapp",
+            // Toast panggilan selalu datang dari pihak pemanggil masuk.
             state: "incoming",
             durationSec: 0,
             isMuted: false,
@@ -123,11 +128,17 @@ export function useCallDetection(
       })
       .catch(() => {});
 
-    // 4. Quick testing shortcut: Ctrl + Shift + C
+    // 4. Shortcut uji: Ctrl+Shift+C = panggilan masuk, Ctrl+Shift+O = panggilan keluar.
+    // Keduanya butuh perangkat nyata karena jalur deteksi Rust membaca window asli.
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === "c") {
+      if (!e.ctrlKey || !e.shiftKey) return;
+      const key = e.key.toLowerCase();
+      if (key === "c") {
         e.preventDefault();
-        simulateIncomingCall("Tim Developer", "whatsapp");
+        simulateIncomingCall("Tim Developer", "whatsapp", "incoming");
+      } else if (key === "o") {
+        e.preventDefault();
+        simulateIncomingCall("Tim Developer", "whatsapp", "outgoing");
       }
     };
 

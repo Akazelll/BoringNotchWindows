@@ -3,7 +3,14 @@ export async function fetchWithTimeout(url: string, timeoutMs = 5000): Promise<R
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    return await fetch(url, { signal: controller.signal });
+    const res = await fetch(url, { signal: controller.signal });
+    if (!res.ok) {
+      // Status dilempar, bukan dikembalikan: pemanggil jadi tahu provider mana yang menolak
+      // dan dengan kode apa. Tanpa ini, body error dibaca sebagai JSON, field yang dicari tidak
+      // ada, dan hasilnya dilaporkan sebagai "nama kota tidak ada" padahal 429/403.
+      throw new Error(`HTTP ${res.status}`);
+    }
+    return res;
   } finally {
     clearTimeout(timer);
   }

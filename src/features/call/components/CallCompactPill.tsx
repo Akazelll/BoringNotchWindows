@@ -1,8 +1,14 @@
 import React from "react";
 import { CallInfo } from "../../../shared/types";
 import { getInitials, getAppMeta } from "../lib/callDisplay";
-import { PHONE_PATH, iconBtnStyle as smallBtnStyle } from "../lib/phoneIcons";
+import { PHONE_PATH, iconBtnStyle } from "../lib/phoneIcons";
 import { CallAvatar } from "./CallAvatar";
+
+// Pill ringkas hanya 43px tinggi, jadi tombol 42px milik kartu expanded akan mentok
+// tepi notch begitu panggilan tersambung (mouse pergi, notch menyusut). 30px menyisakan
+// sekitar 6,5px di atas dan di bawah.
+const PILL_BTN = 30;
+const pillBtn = (background: string) => iconBtnStyle(background, undefined, PILL_BTN);
 
 interface CallCompactPillProps {
   call: CallInfo;
@@ -28,7 +34,8 @@ export const CallCompactPill: React.FC<CallCompactPillProps> = ({
   onDecline,
   onEnd,
 }) => {
-  const isIncoming = call.state === "incoming";
+  const isRinging = call.state === "incoming";
+  const isDialing = call.state === "outgoing";
   const isActive = call.state === "active";
   const initials = getInitials(call.callerName);
   const app = getAppMeta(call.appSource);
@@ -37,14 +44,14 @@ export const CallCompactPill: React.FC<CallCompactPillProps> = ({
     <CallAvatar
       initials={initials}
       appColor={app.color}
-      isIncoming={isIncoming}
+      isIncoming={isRinging}
       isMuted={call.isMuted}
       size={size}
       fontSize={fontSize}
     />
   );
 
-  if (isIncoming) {
+  if (isRinging || isDialing) {
     return (
       <div
         style={{
@@ -75,37 +82,45 @@ export const CallCompactPill: React.FC<CallCompactPillProps> = ({
           </span>
         </div>
 
-        <div style={{ display: "flex", alignItems: "center", gap: "6px", flexShrink: 0 }}>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onDecline();
-            }}
-            aria-label="Tolak panggilan"
-            title="Tolak Panggilan"
-            style={smallBtnStyle("#FF453A")}
-            className="active:scale-90 transition"
-          >
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="#ffffff" aria-hidden="true" style={{ transform: "rotate(135deg)" }}>
-              <path d={PHONE_PATH} />
-            </svg>
-          </button>
+        {/* Panggilan keluar sedang memanggil: tidak ada aksi yang berarti di sini,
+            jadi tidak ada tombol sama sekali. */}
+        {isDialing ? (
+          <span style={{ fontSize: "12px", fontWeight: 600, color: "#a1a1aa", flexShrink: 0 }}>
+            Memanggil...
+          </span>
+        ) : (
+          <div style={{ display: "flex", alignItems: "center", gap: "6px", flexShrink: 0 }}>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onDecline();
+              }}
+              aria-label="Tolak panggilan"
+              title="Tolak Panggilan"
+              style={pillBtn("#FF453A")}
+              className="active:scale-90 transition"
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="#ffffff" aria-hidden="true" style={{ transform: "rotate(135deg)" }}>
+                <path d={PHONE_PATH} />
+              </svg>
+            </button>
 
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onAccept();
-            }}
-            aria-label="Terima panggilan"
-            title="Terima Panggilan"
-            style={smallBtnStyle("#30D158")}
-            className="active:scale-90 transition"
-          >
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="#ffffff" aria-hidden="true">
-              <path d={PHONE_PATH} />
-            </svg>
-          </button>
-        </div>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onAccept();
+              }}
+              aria-label="Terima panggilan"
+              title="Terima Panggilan"
+              style={pillBtn("#30D158")}
+              className="active:scale-90 transition"
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="#ffffff" aria-hidden="true">
+                <path d={PHONE_PATH} />
+              </svg>
+            </button>
+          </div>
+        )}
       </div>
     );
   }
@@ -153,7 +168,7 @@ export const CallCompactPill: React.FC<CallCompactPillProps> = ({
           }}
           aria-label="Akhiri panggilan"
           title="Akhiri Panggilan"
-          style={smallBtnStyle("#FF453A")}
+          style={pillBtn("#FF453A")}
           className="active:scale-90 transition"
         >
           <svg width="15" height="15" viewBox="0 0 24 24" fill="#ffffff" aria-hidden="true" style={{ transform: "rotate(135deg)" }}>

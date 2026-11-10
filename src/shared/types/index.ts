@@ -17,7 +17,11 @@ export interface BatteryInfo {
 export interface AppNotification {
   id: number;
   appName: string;
-  appType: "whatsapp" | "discord" | "chrome" | "telegram" | "spotify" | "system";
+  /**
+   * Jenis aplikasi dari backend. `""` berarti aplikasi tidak dikenali: notifikasi itu tetap
+   * ditampilkan, jadi jangan pernah menolaknya hanya karena jenisnya kosong.
+   */
+  appType: "whatsapp" | "discord" | "chrome" | "telegram" | "spotify" | "teams" | "phone" | "";
   title?: string;
   message?: string;
   isCall?: boolean;
@@ -33,7 +37,8 @@ export interface CallInfo {
   callerNumber?: string;
   avatar?: string;
   appSource: "whatsapp" | "discord" | "telegram" | "teams" | "phone";
-  state: "incoming" | "active" | "ended";
+  // incoming = berdering, outgoing = kita menelepon (belum diangkat), active = tersambung.
+  state: "incoming" | "outgoing" | "active" | "ended";
   durationSec: number;
   isMuted: boolean;
   notifId?: number;

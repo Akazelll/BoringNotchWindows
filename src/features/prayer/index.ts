@@ -20,3 +20,4 @@ export {
   type PrayerTimes,
 } from "./lib/prayerTimes";
 export type { PrayerLocation } from "./services/locationService";
+export { lastCityNear } from "./services/locationService";

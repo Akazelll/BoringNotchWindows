@@ -1,5 +1,6 @@
 import { fetchWithTimeout } from "./http";
 import { getDeviceLocation } from "./deviceLocationService";
+import { haversineKm } from "../lib/prayerTimes";
 
 export interface PrayerLocation {
   latitude: number;
@@ -64,6 +65,62 @@ function deviceTimeZone(): string {
   } catch {
     return "UTC";
   }
+}
+
+const LAST_CITY_KEY = "boring-notch-prayer-last-city";
+
+interface LastCity {
+  city: string;
+  latitude: number;
+  longitude: number;
+}
+
+/**
+ * Nama kota terakhir yang berhasil didapat, beserta koordinat saat itu.
+ *
+ * Disimpan terpisah dari cache lokasi: cache lokasi bisa ditimpa saat nama kota gagal
+ * didapat, sehingga tanpa record terpisah nama yang pernah berhasil ikut hilang.
+ */
+export function loadLastCity(): LastCity | null {
+  try {
+    const raw = localStorage.getItem(LAST_CITY_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as LastCity | null;
+    const ok =
+      !!parsed &&
+      typeof parsed.city === "string" &&
+      parsed.city.length > 0 &&
+      Number.isFinite(parsed.latitude) &&
+      Number.isFinite(parsed.longitude);
+    return ok ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveLastCity(city: string, latitude: number, longitude: number): void {
+  if (!city) return;
+  try {
+    localStorage.setItem(LAST_CITY_KEY, JSON.stringify({ city, latitude, longitude }));
+  } catch {}
+}
+
+/** Nama kota lama dipakai hanya bila perangkat belum bergerak jauh dari titik saat nama itu dicatat. */
+export const LAST_CITY_MAX_KM = 50;
+
+/**
+ * Cadangan nama paling akhir. Nama basi yang sedikit meleset jauh lebih berguna daripada
+ * koordinat mentah; jarak dibatasi supaya tidak menyesatkan setelah pindah kota.
+ *
+ * Dipakai dua tempat: di dalam `detectLocation()` saat koordinat didapat tapi nama gagal, dan
+ * di lapisan tampilan saat deteksi gagal TOTAL (semua provider tidak menjawab) sehingga
+ * `detectLocation()` melempar dan koordinat lama tetap dipakai dari cache.
+ */
+export function lastCityNear(latitude: number, longitude: number): string {
+  const last = loadLastCity();
+  if (!last) return "";
+  const km = haversineKm(latitude, longitude, last.latitude, last.longitude);
+  return Number.isFinite(km) && km <= LAST_CITY_MAX_KM ? last.city : "";
 }
 
 /**
@@ -136,6 +193,39 @@ async function reverseCity(latitude: number, longitude: number): Promise<string 
   }
 }
 
+/**
+ * Nama kota dari koordinat via Photon (komoot). Tanpa API key dan CORS terbuka.
+ *
+ * Sumber kedua yang independen dari BigDataCloud: satu-satunya sumber nama adalah titik
+ * kegagalan tunggal, dan saat itulah header Salat jatuh ke koordinat mentah.
+ */
+async function reverseCityPhoton(latitude: number, longitude: number): Promise<string | null> {
+  try {
+    const url = `https://photon.komoot.io/reverse?lat=${latitude}&lon=${longitude}`;
+    const res = await fetchWithTimeout(url, 5000);
+    const data = await res.json();
+    const properties = data?.features?.[0]?.properties;
+    // Berlapis juga: untuk koordinat pedesaan `city` bisa kosong sementara `county` terisi.
+    for (const key of ["city", "county", "state"]) {
+      const value = properties?.[key];
+      if (typeof value === "string" && value.length > 0) return value;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Nama kota dari koordinat, dua penyedia independen berurutan.
+ *
+ * Sengaja berurutan, bukan paralel: Photon adalah layanan gotong royong, jadi provider kedua
+ * hanya dihubungi saat provider pertama gagal.
+ */
+async function resolveCity(latitude: number, longitude: number): Promise<string | null> {
+  return (await reverseCity(latitude, longitude)) ?? (await reverseCityPhoton(latitude, longitude));
+}
+
 /** ipapi.co memberi kota sekaligus koordinat, jadi dipakai sebagai cadangan terakhir. */
 async function ipapiCo(): Promise<Omit<PrayerLocation, "detectedAt">> {
   let data: Record<string, unknown>;
@@ -185,10 +275,12 @@ export async function detectLocation(): Promise<Omit<PrayerLocation, "detectedAt
 
   try {
     const device = await getDeviceLocation();
+    const city = (await resolveCity(device.latitude, device.longitude)) || DEFAULT_CITY;
+    if (city) saveLastCity(city, device.latitude, device.longitude);
     return {
       latitude: device.latitude,
       longitude: device.longitude,
-      city: (await reverseCity(device.latitude, device.longitude)) ?? DEFAULT_CITY,
+      city,
       // Timezone perangkat hanya tebakan awal; Aladhan mengoreksinya lewat meta.timezone.
       timeZone: deviceTimeZone(),
     };
@@ -198,17 +290,18 @@ export async function detectLocation(): Promise<Omit<PrayerLocation, "detectedAt
 
   try {
     const geo = await ipGeoJsiO();
-    return {
-      ...geo,
-      // Tiga tingkat: reverse geocode presisi, kota kasar dari IP, lalu kosong.
-      city: (await reverseCity(geo.latitude, geo.longitude)) ?? geo.city ?? DEFAULT_CITY,
-    };
+    // Dua tingkat: reverse geocode presisi (dua penyedia), lalu kota kasar dari IP.
+    const city = (await resolveCity(geo.latitude, geo.longitude)) || geo.city || DEFAULT_CITY;
+    if (city) saveLastCity(city, geo.latitude, geo.longitude);
+    return { ...geo, city };
   } catch (err) {
     lastError = err;
   }
 
   try {
-    return await ipapiCo();
+    const fallback = await ipapiCo();
+    if (fallback.city) saveLastCity(fallback.city, fallback.latitude, fallback.longitude);
+    return fallback;
   } catch (err) {
     lastError = err;
   }

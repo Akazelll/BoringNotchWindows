@@ -7,6 +7,7 @@ import {
   formatHHMMId,
   formatRelative,
   formatCoords,
+  haversineKm,
   loadFired,
   nextPrayerIndex,
   parseHHMM,
@@ -183,6 +184,16 @@ assert(formatCoords(-6.8041, 110.8512) === "-6.80, 110.85", "formatCoords membul
 assert(formatCoords(0, 0) === "0.00, 0.00", "formatCoords nol tetap sah");
 assert(formatCoords(NaN, 110.85) === "", "formatCoords menolak NaN");
 assert(formatCoords(-6.8, Infinity) === "", "formatCoords menolak Infinity");
+
+// Jarak untuk ambang "nama kota lama masih relevan": koordinat sama -> 0, Demak ke Semarang
+// masih dekat, Demak ke Surabaya jauh sehingga nama lama tidak boleh dipakai.
+const demak: [number, number] = [-6.8509, 110.6809];
+assert(haversineKm(demak[0], demak[1], demak[0], demak[1]) === 0, "jarak ke titik sendiri nol");
+const semarang = haversineKm(demak[0], demak[1], -6.9929, 110.4138);
+assert(semarang > 15 && semarang < 40, `Demak-Semarang ${semarang.toFixed(1)} km`);
+const surabaya = haversineKm(demak[0], demak[1], -7.2578, 112.7521);
+assert(surabaya > 200 && surabaya < 300, `Demak-Surabaya ${surabaya.toFixed(1)} km`);
+assert(!Number.isFinite(haversineKm(NaN, 110.68, -6.85, 110.68)), "jarak menolak NaN");
 
 assert(nextPrayerIndex(TIMES, parseHHMM("16:40")) === 3, "16:40 berikutnya Maghrib");
 assert(nextPrayerIndex(TIMES, parseHHMM("23:30")) === 0, "setelah Isya membungkus ke Subuh");

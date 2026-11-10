@@ -6,6 +6,7 @@ export interface ActiveCallPayload {
   callerName?: string;
   callerNumber?: string;
   appSource?: CallInfo["appSource"];
+  state?: CallInfo["state"];
   notifId?: number;
 }
 

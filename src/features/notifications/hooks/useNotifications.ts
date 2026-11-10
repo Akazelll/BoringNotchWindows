@@ -61,9 +61,11 @@ export function useNotifications() {
     onNotificationsChanged((notifs) => {
         setNotifications(notifs);
 
-        // Only allow whitelisted message/chat and media apps; discard system/hardware noise completely
+        // Buang hanya noise perangkat yang benar-benar dikenal. Aplikasi yang tidak dikenali
+        // (appType "") DITAMPILKAN: fitur notifikasi harus gagal ke arah menampilkan, bukan
+        // menyembunyikan. Filter lama membuang appType "system" sehingga notifikasi sah dari
+        // aplikasi di luar daftar putih hilang tanpa jejak.
         const isWhitelistedApp = (n: AppNotification) => {
-          if (n.appType === "system") return false;
           const text = `${n.appName} ${n.title || ""} ${n.message || ""}`.toLowerCase();
           const isHardwareAudio =
             text.includes("headset") ||
