@@ -1,6 +1,8 @@
 mod media;
 mod power;
 mod notifications;
+mod image_util;
+mod win_icon;
 mod fullscreen;
 mod autostart;
 mod bluetooth;
@@ -56,6 +58,9 @@ fn get_active_call() -> Option<CallEventInfo> {
         app_source: n.app_type.clone(),
         state: "incoming".to_string(),
         notif_id: Some(n.id),
+        // Panggilan yang berasal dari toast dapat logonya gratis dari jalur notifikasi,
+        // jadi tidak perlu ekstraksi dari exe.
+        logo: n.logo.clone(),
     });
 
     call_from_notif.or_else(|| notifications::detect_call_from_windows())
@@ -165,6 +170,9 @@ fn trigger_notification_test(app_name: Option<String>, title: Option<String>, me
         title: title.unwrap_or_else(|| "Budi Santoso".to_string()),
         message: message.unwrap_or_else(|| "Halo bro, ada info terbaru nih!".to_string()),
         is_call: false,
+        // Notifikasi simulasi tidak punya AppInfo, jadi selalu tampil dengan glyph
+        // fallback. Itu memang tujuannya: menguji jalur fallback.
+        logo: None,
     });
 }
 
@@ -374,6 +382,7 @@ pub fn run() {
                         app_source: n.app_type.clone(),
                         state: "incoming".to_string(),
                         notif_id: Some(n.id),
+                        logo: n.logo.clone(),
                     });
 
                     let current_call = call_from_notif.or_else(|| notifications::detect_call_from_windows());

@@ -38,6 +38,7 @@ export function useCallDetection(
             durationSec: 0,
             isMuted: false,
             notifId: activeCall.notifId,
+            appLogo: activeCall.logo,
           });
         }
       })
@@ -61,6 +62,7 @@ export function useCallDetection(
             durationSec: 0,
             isMuted: false,
             notifId: payload.notifId,
+            appLogo: payload.logo,
           };
         });
       } else {
@@ -111,6 +113,7 @@ export function useCallDetection(
             durationSec: 0,
             isMuted: false,
             notifId: callNotif.id,
+            appLogo: callNotif.logo ?? undefined,
           };
         });
       } else {

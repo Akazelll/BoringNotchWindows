@@ -31,8 +31,8 @@ export const NotificationCompactPill: React.FC<NotificationCompactPillProps> = (
       className="animate-in fade-in duration-200 select-none"
       title="Klik untuk menutup notifikasi"
     >
-      {/* Sisi Kiri: App Squircle 44x44px */}
-      <AppSquircle appType={notification.appType} />
+      {/* Sisi Kiri: logo asli aplikasi, atau squircle fallback 44x44px */}
+      <AppSquircle appType={notification.appType} logo={notification.logo} />
 
       {/* Sisi Tengah: Judul/Pengirim & Cuplikan Pesan */}
       <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: "2px" }}>

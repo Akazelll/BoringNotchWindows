@@ -1,24 +1,43 @@
-import React from "react";
+import React, { useState } from "react";
 import { PHONE_PATH } from "../lib/phoneIcons";
 
 interface CallExpandedAvatarProps {
   initials: string;
   appColor: string;
+  appLogo?: string;
   isIncoming: boolean;
   isMuted: boolean;
 }
 
-/** Avatar 46px + badge status aplikasi untuk kartu panggilan expanded. */
+/**
+ * Avatar 46px + badge status aplikasi untuk kartu panggilan expanded.
+ *
+ * Sama seperti versi pill: logo aplikasi menggantikan bulatan inisial bila tersedia,
+ * dan nama pemanggil tetap terbaca sebagai teks di sebelahnya.
+ */
 export const CallExpandedAvatar: React.FC<CallExpandedAvatarProps> = ({
   initials,
   appColor,
+  appLogo,
   isIncoming,
   isMuted,
 }) => {
+  const [logoFailed, setLogoFailed] = useState(false);
+  const showLogo = !!appLogo && !logoFailed;
+
   return (
     <>
-    {/* Avatar 46px + badge status aplikasi */}
+    {/* Logo aplikasi, atau avatar inisial 46px + badge status aplikasi */}
 <div style={{ position: "relative", width: "46px", height: "46px", flexShrink: 0 }}>
+  {showLogo ? (
+    <img
+      src={appLogo}
+      alt=""
+      aria-hidden="true"
+      onError={() => setLogoFailed(true)}
+      style={{ width: "46px", height: "46px", borderRadius: "50%", objectFit: "contain" }}
+    />
+  ) : (
   <div
     style={{
       width: "46px",
@@ -37,6 +56,7 @@ export const CallExpandedAvatar: React.FC<CallExpandedAvatarProps> = ({
   >
     {initials}
   </div>
+  )}
 
   <div
     style={{

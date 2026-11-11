@@ -9,6 +9,9 @@ pub struct AppNotification {
     pub title: String,
     pub message: String,
     pub is_call: bool,
+    /// Logo aplikasi sumber sebagai data URL. `None` bila tidak tersedia, dan
+    /// frontend memakai glyph lama sebagai fallback.
+    pub logo: Option<String>,
 }
 
 /// Nama tampilan aplikasi untuk notifikasi. Tidak dipakai untuk mengenali aplikasi: ia
@@ -88,6 +91,8 @@ pub struct CallEventInfo {
     pub app_source: String,
     pub state: String, // "incoming" (berdering) | "outgoing" (memanggil) | "active" (tersambung)
     pub notif_id: Option<u32>,
+    /// Logo aplikasi sumber sebagai data URL; lihat `AppNotification.logo`.
+    pub logo: Option<String>,
 }
 
 #[cfg(windows)]
@@ -96,10 +101,54 @@ static SIMULATION_QUEUE: std::sync::Mutex<Vec<AppNotification>> = std::sync::Mut
 #[cfg(windows)]
 static LAST_CALL_HWND: std::sync::Mutex<Option<isize>> = std::sync::Mutex::new(None);
 
+/// Path lengkap exe pemilik jendela panggilan. `exe_name` di dalam scanner sudah
+/// dipendekkan jadi nama berkas saja, padahal ekstraksi ikon butuh path lengkapnya.
+#[cfg(windows)]
+static LAST_CALL_EXE: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+
 #[cfg(windows)]
 extern "system" {
     fn keybd_event(bVk: u8, bScan: u8, dwFlags: u32, dwExtraInfo: usize);
     fn mouse_event(dwFlags: u32, dx: i32, dy: i32, dwData: u32, dwExtraInfo: usize);
+}
+
+/// Logo aplikasi dari `AppInfo`, dengan cache per-kunci.
+///
+/// Ikon aplikasi nyaris tidak pernah berubah, jadi hasilnya di-cache. Kegagalan
+/// sengaja TIDAK di-cache permanen: kalau percobaan pertama kebetulan gagal, logo
+/// harus tetap bisa muncul di poll berikutnya tanpa restart aplikasi.
+#[cfg(windows)]
+fn app_logo(app_info: &windows::ApplicationModel::AppInfo, cache_key: &str) -> Option<String> {
+    use std::collections::HashMap;
+    use std::sync::Mutex;
+
+    static CACHE: Mutex<Option<HashMap<String, String>>> = Mutex::new(None);
+
+    if !cache_key.is_empty() {
+        if let Ok(guard) = CACHE.lock() {
+            if let Some(map) = guard.as_ref() {
+                if let Some(hit) = map.get(cache_key) {
+                    return Some(hit.clone());
+                }
+            }
+        }
+    }
+
+    // 64px karena ditampilkan 44px: cukup tajam untuk skala HiDPI.
+    let size = windows::Foundation::Size { Width: 64.0, Height: 64.0 };
+    let logo_ref = app_info.DisplayInfo().ok()?.GetLogo(size).ok()?;
+    let url = crate::image_util::reference_to_data_url_with_timeout(
+        &logo_ref,
+        std::time::Duration::from_millis(400),
+    )?;
+
+    if !cache_key.is_empty() {
+        if let Ok(mut guard) = CACHE.lock() {
+            guard.get_or_insert_with(HashMap::new).insert(cache_key.to_string(), url.clone());
+        }
+    }
+
+    Some(url)
 }
 
 pub fn trigger_simulated_notification(notif: AppNotification) {
@@ -176,6 +225,13 @@ pub fn fetch_active_notifications() -> Vec<AppNotification> {
 
             let name_lower = app_name.to_lowercase();
             let mut app_type = classify_app(&aumid_lower, &name_lower).to_string();
+
+            // Ikon asli aplikasi sumber. AUMID adalah kunci paling stabil; nama app
+            // dipakai sebagai cadangan bila AUMID kosong.
+            let logo = app_info.as_ref().and_then(|a| {
+                let key = if aumid_lower.is_empty() { name_lower.clone() } else { aumid_lower.clone() };
+                app_logo(a, &key)
+            });
 
             // Extract ALL text elements across ALL visual bindings
             let mut all_texts = Vec::new();
@@ -272,6 +328,7 @@ pub fn fetch_active_notifications() -> Vec<AppNotification> {
                 title,
                 message,
                 is_call,
+                logo,
             });
         }
     }
@@ -466,18 +523,24 @@ pub fn detect_call_from_windows() -> Option<CallEventInfo> {
             return BOOL(1);
         }
 
-        let exe_name = if let Ok(handle) = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) {
+        // Path lengkap dibutuhkan untuk mengekstrak ikon aplikasi, sedangkan
+        // pencocokan di bawah memakai nama berkasnya saja.
+        let exe_path = if let Ok(handle) = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) {
             let mut path_buf = [0u16; 1024];
             let mut len = path_buf.len() as u32;
             if QueryFullProcessImageNameW(handle, PROCESS_NAME_WIN32, PWSTR(path_buf.as_mut_ptr()), &mut len).is_ok() {
-                let p = String::from_utf16_lossy(&path_buf[..len as usize]);
-                p.rsplit('\\').next().unwrap_or(&p).to_lowercase()
+                String::from_utf16_lossy(&path_buf[..len as usize])
             } else {
                 String::new()
             }
         } else {
             String::new()
         };
+        let exe_name = exe_path
+            .rsplit('\\')
+            .next()
+            .unwrap_or(&exe_path)
+            .to_lowercase();
 
         let title_lower = title.to_lowercase();
 
@@ -509,9 +572,15 @@ pub fn detect_call_from_windows() -> Option<CallEventInfo> {
                     // Nilai sementara: ditimpa probe_call_state() setelah EnumWindows.
                     state: "incoming".to_string(),
                     notif_id: None,
+                    // Diisi setelah EnumWindows: ekstraksi ikon tidak boleh jalan
+                    // di tengah enumerasi.
+                    logo: None,
                 });
                 if let Ok(mut h_lock) = LAST_CALL_HWND.lock() {
                     *h_lock = Some(hwnd.0 as isize);
+                }
+                if let Ok(mut e_lock) = LAST_CALL_EXE.lock() {
+                    *e_lock = Some(exe_path.clone());
                 }
                 return BOOL(0); // Stop enum
             }
@@ -533,9 +602,15 @@ pub fn detect_call_from_windows() -> Option<CallEventInfo> {
                     // Nilai sementara: ditimpa probe_call_state() setelah EnumWindows.
                     state: "incoming".to_string(),
                     notif_id: None,
+                    // Diisi setelah EnumWindows: ekstraksi ikon tidak boleh jalan
+                    // di tengah enumerasi.
+                    logo: None,
                 });
                 if let Ok(mut h_lock) = LAST_CALL_HWND.lock() {
                     *h_lock = Some(hwnd.0 as isize);
+                }
+                if let Ok(mut e_lock) = LAST_CALL_EXE.lock() {
+                    *e_lock = Some(exe_path.clone());
                 }
                 return BOOL(0);
             }
@@ -553,9 +628,15 @@ pub fn detect_call_from_windows() -> Option<CallEventInfo> {
                     // Nilai sementara: ditimpa probe_call_state() setelah EnumWindows.
                     state: "incoming".to_string(),
                     notif_id: None,
+                    // Diisi setelah EnumWindows: ekstraksi ikon tidak boleh jalan
+                    // di tengah enumerasi.
+                    logo: None,
                 });
                 if let Ok(mut h_lock) = LAST_CALL_HWND.lock() {
                     *h_lock = Some(hwnd.0 as isize);
+                }
+                if let Ok(mut e_lock) = LAST_CALL_EXE.lock() {
+                    *e_lock = Some(exe_path.clone());
                 }
                 return BOOL(0);
             }
@@ -573,9 +654,15 @@ pub fn detect_call_from_windows() -> Option<CallEventInfo> {
                     // Nilai sementara: ditimpa probe_call_state() setelah EnumWindows.
                     state: "incoming".to_string(),
                     notif_id: None,
+                    // Diisi setelah EnumWindows: ekstraksi ikon tidak boleh jalan
+                    // di tengah enumerasi.
+                    logo: None,
                 });
                 if let Ok(mut h_lock) = LAST_CALL_HWND.lock() {
                     *h_lock = Some(hwnd.0 as isize);
+                }
+                if let Ok(mut e_lock) = LAST_CALL_EXE.lock() {
+                    *e_lock = Some(exe_path.clone());
                 }
                 return BOOL(0);
             }
@@ -600,6 +687,17 @@ pub fn detect_call_from_windows() -> Option<CallEventInfo> {
         if let Ok(mut lock) = FOUND_CALL.lock() {
             if let Some(c) = lock.as_mut() {
                 c.state = probe_call_state(HWND(h as *mut _)).to_string();
+            }
+        }
+    }
+
+    // Ikon aplikasi panggilan. Panggilan tidak punya toast, jadi logonya diambil dari
+    // exe pemilik jendela, bukan dari AppInfo seperti notifikasi.
+    let exe_path = LAST_CALL_EXE.lock().ok().and_then(|l| l.clone());
+    if let Some(path) = exe_path {
+        if let Ok(mut lock) = FOUND_CALL.lock() {
+            if let Some(c) = lock.as_mut() {
+                c.logo = crate::win_icon::extract_exe_icon_cached(&path);
             }
         }
     }
@@ -946,6 +1044,9 @@ pub fn decline_or_end_system_call(declining: bool) -> Result<(), String> {
         if let Ok(mut lock) = LAST_CALL_HWND.lock() {
             *lock = None;
         }
+        if let Ok(mut e_lock) = LAST_CALL_EXE.lock() {
+            *e_lock = None;
+        }
         return Ok(());
     }
 
@@ -980,6 +1081,9 @@ pub fn decline_or_end_system_call(declining: bool) -> Result<(), String> {
             }
             if let Ok(mut lock) = LAST_CALL_HWND.lock() {
                 *lock = None;
+            }
+            if let Ok(mut e_lock) = LAST_CALL_EXE.lock() {
+                *e_lock = None;
             }
             return Ok(());
         }

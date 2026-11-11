@@ -1,7 +1,34 @@
+import { useState } from "react";
 import { Send, Gamepad2, Globe, Music, Bell, Phone } from "lucide-react";
 
-// Apple Squircle Notification App Icons matching IdleNotif.dc.html (44x44px, rounded-12px)
-export function AppSquircle({ appType }: { appType: string }) {
+/**
+ * Ikon aplikasi untuk toast notifikasi (44x44, rounded-12px).
+ *
+ * Kalau `logo` tersedia, logo asli aplikasi ditampilkan apa adanya, tanpa latar
+ * buatan: logo merek sudah membawa warnanya sendiri. Kalau tidak tersedia atau
+ * gagal dimuat, glyph lama dipakai sebagai fallback sehingga tidak pernah ada
+ * kotak gambar rusak.
+ */
+export function AppSquircle({ appType, logo }: { appType: string; logo?: string | null }) {
+  const [failed, setFailed] = useState(false);
+
+  if (logo && !failed) {
+    return (
+      <img
+        src={logo}
+        alt=""
+        aria-hidden="true"
+        onError={() => setFailed(true)}
+        style={{
+          width: "44px",
+          height: "44px",
+          flexShrink: 0,
+          objectFit: "contain",
+        }}
+      />
+    );
+  }
+
   switch (appType) {
     case "whatsapp":
       return (

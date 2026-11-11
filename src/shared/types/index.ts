@@ -25,6 +25,8 @@ export interface AppNotification {
   title?: string;
   message?: string;
   isCall?: boolean;
+  /** Logo asli aplikasi (data URL). `null` bila tidak tersedia, lalu glyph fallback dipakai. */
+  logo?: string | null;
 }
 
 export interface LyricLine {
@@ -35,7 +37,11 @@ export interface LyricLine {
 export interface CallInfo {
   callerName: string;
   callerNumber?: string;
-  avatar?: string;
+  /**
+   * Logo asli aplikasi sumber (data URL), bukan foto pemanggil. `undefined` bila tidak
+   * tersedia, lalu avatar inisial dipakai sebagai fallback.
+   */
+  appLogo?: string;
   appSource: "whatsapp" | "discord" | "telegram" | "teams" | "phone";
   // incoming = berdering, outgoing = kita menelepon (belum diangkat), active = tersambung.
   state: "incoming" | "outgoing" | "active" | "ended";

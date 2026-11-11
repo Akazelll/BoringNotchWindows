@@ -131,24 +131,9 @@ fn get_active_session(
 
 #[cfg(windows)]
 fn load_thumbnail_base64_sync(props: &GlobalSystemMediaTransportControlsSessionMediaProperties) -> Option<String> {
-    use windows::Storage::Streams::DataReader;
-
     let thumb_ref = props.Thumbnail().ok()?;
     let stream = thumb_ref.OpenReadAsync().ok()?.get().ok()?;
-    let size = stream.Size().unwrap_or(0) as u32;
-    if size == 0 || size > 4_000_000 {
-        return None;
-    }
-
-    let reader = DataReader::CreateDataReader(&stream).ok()?;
-    reader.LoadAsync(size).ok()?.get().ok()?;
-
-    let mut bytes = vec![0u8; size as usize];
-    reader.ReadBytes(&mut bytes).ok()?;
-
-    use base64::Engine;
-    let encoded = base64::engine::general_purpose::STANDARD.encode(&bytes);
-    Some(format!("data:image/jpeg;base64,{}", encoded))
+    crate::image_util::stream_to_data_url(&stream)
 }
 
 #[cfg(windows)]

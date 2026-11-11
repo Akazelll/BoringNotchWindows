@@ -8,6 +8,8 @@ export interface ActiveCallPayload {
   appSource?: CallInfo["appSource"];
   state?: CallInfo["state"];
   notifId?: number;
+  /** Logo aplikasi sumber sebagai data URL; lihat `CallInfo.appLogo`. */
+  logo?: string;
 }
 
 export function getActiveCall(): Promise<ActiveCallPayload | null> {

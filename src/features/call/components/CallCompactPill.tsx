@@ -46,6 +46,7 @@ export const CallCompactPill: React.FC<CallCompactPillProps> = ({
       appColor={app.color}
       isIncoming={isRinging}
       isMuted={call.isMuted}
+      appLogo={call.appLogo}
       size={size}
       fontSize={fontSize}
     />

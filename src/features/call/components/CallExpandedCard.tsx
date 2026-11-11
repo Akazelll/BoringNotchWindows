@@ -64,6 +64,7 @@ export const CallExpandedCard: React.FC<CallExpandedCardProps> = ({
         appColor={app.color}
         isIncoming={isRinging}
         isMuted={call.isMuted}
+        appLogo={call.appLogo}
       />
 
       {/* Nama + baris status */}
