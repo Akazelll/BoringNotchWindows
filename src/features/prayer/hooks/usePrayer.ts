@@ -4,8 +4,8 @@ import {
   GRACE_MIN,
   arcFraction,
   loadFired,
+  minutesUntil,
   nextPrayerIndex,
-  parseHHMM,
   prevPrayerIndex,
   resolveDue,
   saveFired,
@@ -192,7 +192,7 @@ export function usePrayer(isExpanded: boolean = false) {
     ? {
         key: nextKey,
         time: times[nextKey],
-        minutesLeft: Math.max(0, parseHHMM(times[nextKey]) - nowMinutes),
+        minutesLeft: minutesUntil(times, nowMinutes),
         prevKey,
         arcFraction: arcFraction(nowMinutes, times),
       }

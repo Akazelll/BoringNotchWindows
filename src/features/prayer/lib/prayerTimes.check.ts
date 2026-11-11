@@ -9,6 +9,7 @@ import {
   formatCoords,
   haversineKm,
   loadFired,
+  minutesUntil,
   nextPrayerIndex,
   parseHHMM,
   resolveDue,
@@ -177,6 +178,23 @@ assert(formatRelative(68) === "dalam 1 j 8 mnt", "formatRelative 68 menit");
 assert(formatRelative(45) === "dalam 45 mnt", "formatRelative 45 menit");
 assert(formatRelative(0) === "sekarang", "formatRelative 0 menit");
 assert(formatRelative(120) === "dalam 2 j", "formatRelative 2 jam pas");
+
+// Hitung mundur setelah Isya menuju Subuh BESOK, bukan 0. Inilah bug yang diperbaiki: dulu
+// selisihnya negatif lalu dijepit ke 0 oleh Math.max, sehingga labelnya macet di "sekarang".
+// 23:30 -> 04:32 besok = 5 j 2 mnt = 302 menit.
+assert(minutesUntil(TIMES, parseHHMM("23:30")) === 302, "23:30 menuju Subuh besok");
+assert(minutesUntil(TIMES, parseHHMM("20:00")) === 512, "20:00 menuju Subuh besok");
+assert(minutesUntil(TIMES, parseHHMM("19:02")) === 570, "tepat sesudah Isya");
+assert(minutesUntil(TIMES, parseHHMM("23:59")) > 0, "tidak pernah macet di nol");
+// Jalur normal tidak berubah.
+assert(minutesUntil(TIMES, parseHHMM("17:47")) === 1, "satu menit menuju Maghrib");
+assert(minutesUntil(TIMES, parseHHMM("10:00")) === 112, "pagi menuju Dzuhur");
+assert(minutesUntil(TIMES, parseHHMM("04:31")) === 1, "satu menit menuju Subuh");
+// Label setelah Isya harus berupa durasi, bukan "sekarang".
+assert(
+  formatRelative(minutesUntil(TIMES, parseHHMM("23:30"))) === "dalam 5 j 2 mnt",
+  "label malam berupa hitung mundur"
+);
 
 // Label lokasi cadangan: dua desimal, dan kosong untuk koordinat tak valid supaya pemanggil
 // bisa memakai `||` tanpa menghasilkan label sampah.

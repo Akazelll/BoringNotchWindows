@@ -114,6 +114,22 @@ export function prevPrayerIndex(times: PrayerTimes, nowMin: number): number {
   return found;
 }
 
+const MINUTES_PER_DAY = 24 * 60;
+
+/**
+ * Menit menuju salat berikutnya.
+ *
+ * Setelah Isya targetnya adalah Subuh BESOK, jadi selisih mentahnya negatif (23:30 -> 04:32
+ * = -1138). Nilai itu dulu dijepit ke 0 oleh `Math.max(0, …)` di pemanggil, sehingga hitung
+ * mundurnya hilang dan labelnya macet di "sekarang" sepanjang malam. Di sini pembungkusan
+ * hari ditangani, bukan dijepit.
+ */
+export function minutesUntil(times: PrayerTimes, nowMin: number): number {
+  const target = parseHHMM(times[PRAYER_ORDER[nextPrayerIndex(times, nowMin)]]);
+  const delta = target - nowMin;
+  return delta > 0 ? delta : delta + MINUTES_PER_DAY;
+}
+
 /** "dalam 1 j 8 mnt" / "dalam 45 mnt" / "sekarang". */
 export function formatRelative(deltaMin: number): string {
   if (deltaMin <= 0) return "sekarang";

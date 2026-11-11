@@ -16,6 +16,7 @@ export {
   formatHHMMId,
   formatRelative,
   formatCoords,
+  minutesUntil,
   type PrayerKey,
   type PrayerTimes,
 } from "./lib/prayerTimes";
