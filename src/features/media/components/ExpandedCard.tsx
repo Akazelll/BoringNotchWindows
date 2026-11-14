@@ -8,9 +8,11 @@ import { useClock } from "../../../shared/hooks/useClock";
 import type { PomodoroController } from "../../pomodoro";
 import type { PrayerController } from "../../prayer";
 import { useTodoList } from "../../todo";
+import type { WeatherController } from "../../weather";
 import { PageMusicPlayer } from "./pages/PageMusicPlayer";
 import { PagePomodoro } from "./pages/PagePomodoro";
 import { PageTodoList } from "./pages/PageTodoList";
+import { PageWeather } from "./pages/PageWeather";
 import { PagePrayer } from "./pages/PagePrayer";
 import { NotchChevrons } from "./pages/NotchChevrons";
 import { PageDots } from "./pages/PageDots";
@@ -25,6 +27,7 @@ interface ExpandedCardProps {
   onToggleLyrics: () => void;
   pomodoro: PomodoroController;
   prayer: PrayerController;
+  weather: WeatherController;
   lyricsData: LyricsHookResult;
 }
 
@@ -38,6 +41,7 @@ export const ExpandedCard: React.FC<ExpandedCardProps> = ({
   onToggleLyrics,
   pomodoro,
   prayer,
+  weather,
   lyricsData,
 }) => {
   const [currentPage, setCurrentPage] = useState<number>(0);
@@ -56,7 +60,7 @@ export const ExpandedCard: React.FC<ExpandedCardProps> = ({
   const displayTitle = cleanTitle || media?.title || "Belum ada media";
   const displayArtist = cleanArtist || (media?.artist && !isInvalidArtist(media.artist) ? media.artist : "Windows Audio");
 
-  const totalPages = 4;
+  const totalPages = 5;
   const handlePrevPage = (e: React.MouseEvent) => {
     e.stopPropagation();
     setCurrentPage((prev) => (prev > 0 ? prev - 1 : totalPages - 1));
@@ -165,18 +169,28 @@ export const ExpandedCard: React.FC<ExpandedCardProps> = ({
         )}
 
         {currentPage === 3 && (
-        <PagePrayer
-          battery={battery}
-          dateStr={dateStr}
-          timeStr={timeStr}
-          prayer={prayer}
-        />
+          <PageWeather
+            battery={battery}
+            dateStr={dateStr}
+            timeStr={timeStr}
+            weather={weather}
+          />
+        )}
+
+        {currentPage === 4 && (
+          <PagePrayer
+            battery={battery}
+            dateStr={dateStr}
+            timeStr={timeStr}
+            prayer={prayer}
+          />
         )}
 
       {/* ─── BOTTOM PAGINATION DOTS (Completely isolated, zero overlap) ─── */}
       {!isLyricsOpen && (
         <PageDots
           currentPage={currentPage}
+          totalPages={totalPages}
           onSelect={setCurrentPage}
         />
       )}

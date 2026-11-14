@@ -3,6 +3,7 @@ import type { AppNotification, BatteryInfo, CallInfo, MediaInfo, RobotMood, Blue
 import type { ChargingBannerMode } from "../../../shared/types";
 import type { PomodoroController } from "../../pomodoro";
 import type { PrayerBannerState, PrayerController } from "../../prayer";
+import type { WeatherController } from "../../weather";
 import { PrayerBannerPill } from "../../prayer";
 import { ExpandedCard, CompactPill } from "../../media";
 import type { LyricsHookResult } from "../../media";
@@ -19,6 +20,7 @@ export interface NotchContentProps {
   battery: BatteryInfo;
   pomodoro: PomodoroController;
   prayer: PrayerController;
+  weather: WeatherController;
   prayerBanner: PrayerBannerState | null;
   isPrayerBannerActive: boolean;
   dismissPrayer: () => void;
@@ -54,6 +56,7 @@ export const NotchContent: React.FC<NotchContentProps> = ({
   battery,
   pomodoro,
   prayer,
+  weather,
   prayerBanner,
   isPrayerBannerActive,
   dismissPrayer,
@@ -102,6 +105,7 @@ export const NotchContent: React.FC<NotchContentProps> = ({
           onToggleLyrics={onToggleLyrics}
           pomodoro={pomodoro}
           prayer={prayer}
+          weather={weather}
           lyricsData={lyricsData}
         />
       )

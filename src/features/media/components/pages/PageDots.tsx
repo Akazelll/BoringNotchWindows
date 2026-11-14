@@ -2,11 +2,16 @@ import React from "react";
 
 interface PageDotsProps {
   currentPage: number;
+  totalPages?: number;
   onSelect: (idx: number) => void;
 }
 
 /** Titik pagination bawah. Guard `!isLyricsOpen` tetap di ExpandedCard. */
-export const PageDots: React.FC<PageDotsProps> = ({ currentPage, onSelect }) => {
+export const PageDots: React.FC<PageDotsProps> = ({
+  currentPage,
+  totalPages = 5,
+  onSelect,
+}) => {
   return (
     <div
       style={{
@@ -16,12 +21,12 @@ export const PageDots: React.FC<PageDotsProps> = ({ currentPage, onSelect }) => 
         gap: "6px",
         width: "100%",
         height: "14px",
-        marginTop: "6px",
+        marginTop: "4px",
         zIndex: 10,
       }}
       aria-hidden="true"
     >
-      {[0, 1, 2, 3].map((idx) => {
+      {Array.from({ length: totalPages }, (_, idx) => {
         const isActive = currentPage === idx;
         return (
           <button

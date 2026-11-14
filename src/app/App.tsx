@@ -6,6 +6,7 @@ import { useCursor } from "../features/robot";
 import { useOpacity } from "../features/appearance";
 import { useBattery } from "../features/hardware-monitor";
 import { usePrayer } from "../features/prayer";
+import { useWeather } from "../features/weather";
 import { useNotifications } from "../features/notifications";
 import { useBluetooth } from "../features/bluetooth";
 import {
@@ -48,6 +49,7 @@ export default function App() {
 
   const pomodoro = usePomodoro();
   const prayer = usePrayer(state === "expanded");
+  const weather = useWeather(state === "expanded");
   const lyricsData = useLyrics(media); // Background pre-fetching as soon as music plays
 
   const cursor = useCursor();
@@ -169,6 +171,7 @@ export default function App() {
             battery={battery}
             pomodoro={pomodoro}
             prayer={prayer}
+            weather={weather}
             prayerBanner={prayer.banner}
             isPrayerBannerActive={isPrayerBannerActive}
             dismissPrayer={prayer.dismissBanner}
